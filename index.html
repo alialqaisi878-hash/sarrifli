@@ -1015,7 +1015,7 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
 const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
-const APP_VER='2.4';
+const APP_VER='2.5';
 /* Online copy: ask the server which version is current; if it is newer, clear the offline cache and reload once. */
 async function checkUpdate(){if(!/^https?:/.test(location.protocol))return;try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.json()).v;
   if(v&&v!==APP_VER&&sessionStorage.getItem('upd')!==v){sessionStorage.setItem('upd',v);try{const k=await caches.keys();await Promise.all(k.map(x=>caches.delete(x)))}catch(e){}location.reload()}}catch(e){}}
@@ -1150,12 +1150,13 @@ async function pushSetup(ask){const st=pushState();if(st==='none'||st==='home'||
   try{if(Notification.permission!=='granted'){if(!ask)return'ask';if(await Notification.requestPermission()!=='granted')return'denied'}
     const reg=await navigator.serviceWorker.ready,m=await Cloud.messaging(),t=await m.getToken({vapidKey:VAPID,serviceWorkerRegistration:reg});if(!t)return'ask';
     const u=Cloud.user,paid=!isCust()&&(!!paidUntil()||(licState().ok&&!licState().trial));
-    await Cloud.saveToken(t,{role:isCust()?'cust':u?(u.admin?'admin':'shop'):'guest',paid,at:Date.now()});S.pushTok=t;save();return'on'}catch(e){console.warn('push',e);return'err'}}
-function pushBox(){const st=pushState(),el=$('pushBox');if(!el)return;el.hidden=!(st==='ask'||st==='home'||st==='denied');
-  el.innerHTML=st==='home'?'<b>حتى توصلك الإشعارات على الايباد/الآيفون</b><p class="small">دوس زر المشاركة <span style="font-size:16px">⎋</span> ← «Add to Home Screen» (إضافة إلى الشاشة الرئيسية)، وافتح التطبيق من الأيقونة.</p>'
+    await Cloud.saveToken(t,{role:isCust()?'cust':u?(u.admin?'admin':'shop'):'guest',paid,at:Date.now()});S.pushTok=t;S.pushErr='';save();return'on'}catch(e){console.warn('push',e);S.pushErr=String(e&&(e.code||e.message)||e).slice(0,120);save();return'err'}}
+function pushBox(){const st=pushState(),el=$('pushBox');if(!el)return;el.hidden=st==='none';
+  el.innerHTML=st==='on'?'<div class="row"><b style="flex:1">✓ هذا الجهاز مسجّل للإشعارات</b><button class="link" onclick="S.pushTok=\'\';save();pushOn()">إعادة التسجيل</button></div>'
+   :st==='home'?'<b>حتى توصلك الإشعارات على الايباد/الآيفون</b><p class="small">دوس زر المشاركة <span style="font-size:16px">⎋</span> ← «Add to Home Screen» (إضافة إلى الشاشة الرئيسية)، وافتح التطبيق من الأيقونة.</p>'
    :st==='denied'?'<b>الإشعارات مقفولة</b><p class="small">فعّلها من إعدادات المتصفح أو الموبايل لهذا الموقع.</p>'
-   :'<b>خلّي الإشعارات توصل لموبايلك</b><p class="small">حتى لو التطبيق مسكّر، أول ما يتغير السعر.</p><button class="btn primary block" onclick="pushOn()">فعّل الإشعارات</button>'}
-async function pushOn(){const r=await pushSetup(true);toast(r==='on'?'تم تفعيل الإشعارات ✓':r==='denied'?'ما انسمح بالإشعارات':'ما كدرنا نفعّلها، حاول مرة ثانية');pushBox();renderNotifs()}
+   :'<b>خلّي الإشعارات توصل لموبايلك</b><p class="small">حتى لو التطبيق مسكّر، أول ما يتغير السعر.</p>'+(S.pushErr?'<p class="small" style="color:var(--neg)">آخر محاولة ما نجحت: '+esc(S.pushErr)+'</p>':'')+'<button class="btn primary block" onclick="pushOn()">فعّل الإشعارات</button>'}
+async function pushOn(){const r=await pushSetup(true);toast(r==='on'?'تم تسجيل الجهاز للإشعارات ✓':r==='denied'?'ما انسمح بالإشعارات':'ما كدرنا نفعّلها: '+(S.pushErr||r));pushBox();renderNotifs()}
 /* Admin side: the service-account key stays only in this browser (never uploaded). It signs a token and sends to each saved phone. */
 const SA_KEY='sarrifli.sa';let gTok=null;
 function getSA(){try{return JSON.parse(localStorage.getItem(SA_KEY))}catch(e){return null}}
@@ -1174,10 +1175,12 @@ async function pushAll(n){const sa=getSA();if(!sa||Cloud.mode!=='fb')return null
   for(let i=0;i<list.length;i+=20)await Promise.all(list.slice(i,i+20).map(async t=>{try{const r=await fetch(url,{method:'POST',headers:{Authorization:'Bearer '+at,'Content-Type':'application/json'},
     body:JSON.stringify({message:{token:t.id,data:{title:String(n.title||'صرفلي'),body:String(n.body||'')},webpush:{headers:{Urgency:'high',TTL:'86400'}}}})});
     if(r.ok)ok++;else if(r.status===404||r.status===400)Cloud.delToken(t.id)}catch(e){}}));return{ok,all:list.length}}
-async function notifyAll(n){await Cloud.send(n);let p=null;try{p=await pushAll(n)}catch(e){console.warn(e)}return p}
+async function notifyAll(n){await Cloud.send(n);let p=null;try{p=await pushAll(n)}catch(e){console.warn(e);p={err:String(e&&(e.code||e.message)||e).slice(0,120)}}return p}
+function pushMsg(p){return !p?'':p.err?'الإشعار ما وصل للموبايلات: '+p.err:'وصل الإشعار لـ '+p.ok+' من '+p.all+' موبايل'}
 function renderPushAdm(){const el=$('admPush');if(!el)return;const sa=getSA();
-  el.innerHTML=sa?'<div class="row"><b style="flex:1">مربوط ✓</b><span class="small muted num">'+esc(sa.client_email.split('@')[0])+'</span></div><div class="small muted">الإشعارات توصل لشريط الإشعارات بالموبايلات من هذا الجهاز.</div><button class="btn block" onclick="if(confirm(\'تفصل الإشعارات من هذا الجهاز؟\')){localStorage.removeItem(SA_KEY);gTok=null;renderPushAdm()}">فصل</button>'
+  el.innerHTML=sa?'<div class="row"><b style="flex:1">مربوط ✓</b><span class="small muted num">'+esc(sa.client_email.split('@')[0])+'</span></div><div class="small muted">الإشعارات توصل لشريط الإشعارات بالموبايلات من هذا الجهاز.</div><div class="small" id="tokCnt">…</div><button class="btn block" onclick="if(confirm(\'تفصل الإشعارات من هذا الجهاز؟\')){localStorage.removeItem(SA_KEY);gTok=null;renderPushAdm()}">فصل</button>'
    :'<div class="small muted">حتى توصل الإشعارات لشريط الإشعارات بموبايلات الناس، ارفع ملف المفتاح (JSON) من Firebase مرة وحدة. الملف يبقى بس بهذا الجهاز.</div><label class="btn primary block">رفع ملف المفتاح<input type="file" accept=".json,application/json" hidden id="saIn"></label>';
+  if(sa&&Cloud.mode==='fb')Cloud.tokens().then(L=>{const e=$('tokCnt');if(e){const c=L.filter(t=>t.role==='cust').length;e.textContent='الأجهزة المسجّلة للإشعارات: '+L.length+' (زبائن '+c+')'}}).catch(x=>{const e=$('tokCnt');if(e)e.textContent='ما كدرت أقرا الأجهزة: '+(x.code||x.message)});
   const i=$('saIn');if(i)i.onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());if(!j.private_key||!j.client_email)throw 0;localStorage.setItem(SA_KEY,JSON.stringify(j));gTok=null;await gAccess(j);toast('تم الربط ✓');renderPushAdm()}catch(x){toast('الملف مو صحيح')}}}
 function startNotifs(){Cloud.onNotifs(list=>{const prevTop=S.lastN||0;NOTIFS=list;const fresh=list.filter(n=>n.at>prevTop&&forMe(n));
   if(list[0]){if(prevTop&&fresh.length){fresh.slice(0,3).forEach(sysNotify);toast('🔔 '+(fresh[0].title||'إشعار جديد'))}S.lastN=list[0].at;save()}nativeSync();renderNotifs()})}
@@ -1217,7 +1220,7 @@ function admEditMarket(){if(!guardAdmin())return;openEdit('USD',{rates:(S.market
     /* Every market-rate change also goes out as a notice to everyone, listing the currencies that moved. */
     const ch=CURS.filter(c=>r[c.code]&&String(r[c.code])!==String(old[c.code]||''));if(!ch.length)return;
     const body=ch.map(c=>{const v=r[c.code],o=old[c.code],arr=o&&o[1]!=null&&v[1]!=null&&v[1]!==o[1]?(v[1]>o[1]?' ▲':' ▼'):'';return c.flag+' '+shortNm(c)+' ('+perShort(c)+'): شراء '+fmt(v[0])+' · بيع '+fmt(v[1])+arr}).join('\n');
-    try{const p=await notifyAll({title:'تحديث سعر الصرف',body,target:'all'});if(p)toast('وصل الإشعار لـ '+p.ok+' موبايل');setTimeout(admNotifs,600)}catch(e){toast('السعر انحفظ بس الإشعار ما انرسل')}}})}
+    try{const p=await notifyAll({title:'تحديث سعر الصرف',body,target:'all'});toast(p?pushMsg(p):'تم تحديث السعر ✓ (ملف المفتاح مو مرفوع، الإشعار داخل التطبيق بس)');setTimeout(admNotifs,600)}catch(e){toast('السعر انحفظ بس الإشعار ما انرسل')}}})}
 async function loadMarket(){try{const m=await Cloud.market();if(m){S.market=m;save()}}catch(e){}renderMarket();if($('admMarket'))admMarketTxt()}
 function renderMarket(){if($('v-cust').classList.contains('on'))renderCust();const el=$('mktRow');if(!el)return;const m=S.market,c=heroCode(),r=m&&m.rates&&m.rates[c];
   if(!r){el.hidden=true;return}el.hidden=false;el.innerHTML='<span class="mk-l">سعر السوق</span><b class="num">'+fmt(r[0])+'</b><span class="mk-s">/</span><b class="num s">'+fmt(r[1])+'</b><span class="mk-t">'+ago(m.at)+'</span>'}
@@ -1225,7 +1228,7 @@ function admNotifs(){$('admNotifs').innerHTML=NOTIFS.length?'<div class="small m
   $('admNotifs').querySelectorAll('[data-id]').forEach(b=>b.onclick=async()=>{try{await Cloud.del(b.dataset.id);NOTIFS=NOTIFS.filter(n=>n.id!==b.dataset.id);admNotifs();renderNotifs()}catch(e){toast('ما انحذف')}})}
 let nTarget='all';tg('nTarget',v=>nTarget=v);tg('admFilter',v=>{admF=v;admRender()});
 async function admSend(){if(!guardAdmin())return;const t=$('nTitle').value.trim(),b=$('nBody').value.trim();if(!t&&!b){toast('اكتب الرسالة');return}
-  try{const p=await notifyAll({title:t,body:b,target:nTarget});$('nTitle').value='';$('nBody').value='';toast(p?'تم الإرسال ✓ وصل لـ '+p.ok+' موبايل':'تم إرسال الإشعار ✓');setTimeout(admNotifs,600)}catch(e){toast('ما انرسل، تأكد من الإنترنت')}}
+  try{const p=await notifyAll({title:t,body:b,target:nTarget});$('nTitle').value='';$('nBody').value='';toast(p?pushMsg(p):'تم إرسال الإشعار ✓ (داخل التطبيق بس)');setTimeout(admNotifs,600)}catch(e){toast('ما انرسل، تأكد من الإنترنت')}}
 let logoTaps=0;$('hLogo').onclick=()=>{if(++logoTaps>=5){logoTaps=0;go(Cloud.user&&Cloud.user.admin?'admin':'set');if(!(Cloud.user&&Cloud.user.admin))toast('سجل دخول بحساب المدير')}setTimeout(()=>logoTaps=0,2000)};
 
 /* ---- converter ---- */
