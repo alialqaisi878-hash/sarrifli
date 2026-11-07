@@ -1015,7 +1015,7 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
 const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
-const APP_VER='2.6';
+const APP_VER='2.7';
 /* Online copy: ask the server which version is current; if it is newer, clear the offline cache and reload once. */
 async function checkUpdate(){if(!/^https?:/.test(location.protocol))return;try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.json()).v;
   if(v&&v!==APP_VER&&sessionStorage.getItem('upd')!==v){sessionStorage.setItem('upd',v);try{const k=await caches.keys();await Promise.all(k.map(x=>caches.delete(x)))}catch(e){}location.reload()}}catch(e){}}
@@ -1058,7 +1058,7 @@ const Cloud=(()=>{
     if(mode==='off')return[];return Object.entries(dl().offices).filter(([,v])=>v.status==='active').map(([k,v])=>({id:k,...v}))}
   async function all(){if(mode==='fb'){const q=await db.collection('offices').get();return q.docs.map(x=>({id:x.id,...x.data()}))}return Object.entries(dl().offices).map(([k,v])=>({id:k,...v}))}
   async function update(id,patch){if(mode==='fb'){await db.doc('offices/'+id).update(patch);return}const d=dl();d.offices[id]={...d.offices[id],...patch};ds(d)}
-  async function send(n){n={...n,at:Date.now(),by:user&&user.email||''};if(mode==='fb'){await db.collection('notifs').add(n);return}const d=dl();d.notifs.unshift({id:'n'+Date.now(),...n});ds(d);try{bc&&bc.postMessage('notif')}catch(e){}}
+  async function send(n){n={...n,at:n.at||Date.now(),by:user&&user.email||''};if(mode==='fb'){await db.collection('notifs').add(n);return}const d=dl();d.notifs.unshift({id:'n'+Date.now(),...n});ds(d);try{bc&&bc.postMessage('notif')}catch(e){}}
   async function del(id){if(mode==='fb'){await db.doc('notifs/'+id).delete();return}const d=dl();d.notifs=d.notifs.filter(x=>x.id!==id);ds(d)}
   /* Market rates set by the admin, shown to every shop as a reference. */
   async function market(){if(mode==='fb'){const x=await db.doc('market/today').get();return x.exists?x.data():null}if(mode==='off')return null;return dl().market||null}
@@ -1146,11 +1146,15 @@ const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform===
 const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
 function pushState(){if(window.Native||Cloud.mode!=='fb'||!VAPID)return'none';if(isIOS&&!standalone)return'home';if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))return'none';
   return Notification.permission==='granted'?(S.pushTok?'on':'ask'):Notification.permission==='denied'?'denied':'ask'}
-async function pushSetup(ask){const st=pushState();if(st==='none'||st==='home'||st==='denied')return st;
+function tokInfo(){const u=Cloud.user;return{role:isCust()?'cust':u?(u.admin?'admin':'shop'):'guest',paid:!isCust()&&(!!paidUntil()||(licState().ok&&!licState().trial)),at:Date.now()}}
+/* Android app: Firebase gives the token natively; it can take a few seconds the first time. */
+async function nativePush(){if(!window.Native||!Native.fcm||Cloud.mode!=='fb')return'none';let t='';try{t=Native.fcm()}catch(e){}
+  if(!t){setTimeout(()=>{try{const t2=Native.fcm();if(t2)nativePush()}catch(e){}},6000);return'wait'}
+  if(S.pushTok!==t||!S.pushAt||Date.now()-S.pushAt>7*864e5){try{await Cloud.saveToken(t,tokInfo());S.pushTok=t;S.pushAt=Date.now();save()}catch(e){console.warn('push',e);return'err'}}return'on'}
+async function pushSetup(ask){if(window.Native)return nativePush();const st=pushState();if(st==='none'||st==='home'||st==='denied')return st;
   try{if(Notification.permission!=='granted'){if(!ask)return'ask';if(await Notification.requestPermission()!=='granted')return'denied'}
     const reg=await navigator.serviceWorker.ready,m=await Cloud.messaging(),t=await m.getToken({vapidKey:VAPID,serviceWorkerRegistration:reg});if(!t)return'ask';
-    const u=Cloud.user,paid=!isCust()&&(!!paidUntil()||(licState().ok&&!licState().trial));
-    await Cloud.saveToken(t,{role:isCust()?'cust':u?(u.admin?'admin':'shop'):'guest',paid,at:Date.now()});S.pushTok=t;S.pushErr='';save();return'on'}catch(e){console.warn('push',e);S.pushErr=String(e&&(e.code||e.message)||e).slice(0,120);save();return'err'}}
+    await Cloud.saveToken(t,tokInfo());S.pushTok=t;S.pushErr='';save();return'on'}catch(e){console.warn('push',e);S.pushErr=String(e&&(e.code||e.message)||e).slice(0,120);save();return'err'}}
 function pushWhy(){const m=[];if(window.Native)m.push('Native');m.push('cloud:'+Cloud.mode);if(!('serviceWorker' in navigator))m.push('no-SW');if(!('PushManager' in window))m.push('no-Push');if(!('Notification' in window))m.push('no-Notif');m.push(isIOS?'iOS':'other');m.push(standalone?'standalone':'browser');return m.join(' · ')}
 function pushBox(){const st=pushState(),el=$('pushBox');if(!el)return;el.hidden=!!window.Native;
   el.innerHTML=st==='none'?'<b>الجهاز ما يدعم إشعارات الخلفية بهذي الطريقة</b><p class="small num" dir="ltr">'+esc(pushWhy())+'</p>'
@@ -1175,9 +1179,9 @@ async function pushAll(n){const sa=getSA();if(!sa||Cloud.mode!=='fb')return null
   const want=t=>n.target==='cust'?t.role==='cust':n.target==='paid'?!!t.paid:n.target==='free'?(!t.paid&&t.role!=='cust'):true;
   const url='https://fcm.googleapis.com/v1/projects/'+(sa.project_id||FB_CONFIG.projectId)+'/messages:send';let ok=0;const list=L.filter(want);
   for(let i=0;i<list.length;i+=20)await Promise.all(list.slice(i,i+20).map(async t=>{try{const r=await fetch(url,{method:'POST',headers:{Authorization:'Bearer '+at,'Content-Type':'application/json'},
-    body:JSON.stringify({message:{token:t.id,data:{title:String(n.title||'صرفلي'),body:String(n.body||'')},webpush:{headers:{Urgency:'high',TTL:'86400'}}}})});
+    body:JSON.stringify({message:{token:t.id,data:{title:String(n.title||'صرفلي'),body:String(n.body||''),at:String(n.at||Date.now())},android:{priority:'HIGH'},webpush:{headers:{Urgency:'high',TTL:'86400'}}}})});
     if(r.ok)ok++;else if(r.status===404||r.status===400)Cloud.delToken(t.id)}catch(e){}}));return{ok,all:list.length}}
-async function notifyAll(n){await Cloud.send(n);let p=null;try{p=await pushAll(n)}catch(e){console.warn(e);p={err:String(e&&(e.code||e.message)||e).slice(0,120)}}return p}
+async function notifyAll(n){n={...n,at:Date.now()};await Cloud.send(n);let p=null;try{p=await pushAll(n)}catch(e){console.warn(e);p={err:String(e&&(e.code||e.message)||e).slice(0,120)}}return p}
 function pushMsg(p){return !p?'':p.err?'الإشعار ما وصل للموبايلات: '+p.err:'وصل الإشعار لـ '+p.ok+' من '+p.all+' موبايل'}
 function renderPushAdm(){const el=$('admPush');if(!el)return;const sa=getSA();
   el.innerHTML=sa?'<div class="row"><b style="flex:1">مربوط ✓</b><span class="small muted num">'+esc(sa.client_email.split('@')[0])+'</span></div><div class="small muted">الإشعارات توصل لشريط الإشعارات بالموبايلات من هذا الجهاز.</div><div class="small" id="tokCnt">…</div><button class="btn block" onclick="if(confirm(\'تفصل الإشعارات من هذا الجهاز؟\')){localStorage.removeItem(SA_KEY);gTok=null;renderPushAdm()}">فصل</button>'
