@@ -1011,7 +1011,7 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
 const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
-const APP_VER='1.9';
+const APP_VER='2.0';
 const ADMIN_DEMO={email:'admin@sarrifli.app',h:'1a3141d98f29c2658a3340888ccc74913b72e22f5aef462ddb3ae931976bce1e'};
 async function sha256(t){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
 /* People sign in with a simple username (no email needed). Internally it becomes username@sarrifli.app. */
@@ -1159,7 +1159,11 @@ function admRender(){const now=Date.now();const L=admOffices.filter(o=>admF==='a
     try{await Cloud.update(o.id,p);Object.assign(o,p);buzz();toast('تم ✓');admLoad()}catch(e){toast('ما انحفظ التغيير')}})})}
 function admMarketTxt(){const m=S.market;$('admMarket').innerHTML=m&&m.rates?curs().filter(c=>m.rates[c.code]).map(c=>c.flag+' '+c.name.split(' ')[0]+': <b class="num">'+fmt(m.rates[c.code][0])+' / '+fmt(m.rates[c.code][1])+'</b>').join('<br>')+'<br><span>آخر تحديث '+ago(m.at)+'</span>':'ما محدد سعر سوق بعد.'}
 function admEditMarket(){if(!guardAdmin())return;openEdit('USD',{rates:(S.market&&S.market.rates)||{},title:'سعر السوق',sub:'السعر اللي يطلع لكل الصيرفات كمرجع بالرئيسية',btn:'نشر سعر السوق',done:'تم نشر سعر السوق ✓',
-  save:async r=>{await Cloud.setMarket(r);S.market={rates:r,at:Date.now()};save();admMarketTxt();renderMarket()}})}
+  save:async r=>{const old=(S.market&&S.market.rates)||{};await Cloud.setMarket(r);S.market={rates:r,at:Date.now()};save();admMarketTxt();renderMarket();
+    /* Every market-rate change also goes out as a notice to everyone, listing the currencies that moved. */
+    const ch=CURS.filter(c=>r[c.code]&&String(r[c.code])!==String(old[c.code]||''));if(!ch.length)return;
+    const body=ch.map(c=>{const v=r[c.code],o=old[c.code],arr=o&&o[1]!=null&&v[1]!=null&&v[1]!==o[1]?(v[1]>o[1]?' ▲':' ▼'):'';return c.flag+' '+shortNm(c)+' ('+perShort(c)+'): شراء '+fmt(v[0])+' · بيع '+fmt(v[1])+arr}).join('\n');
+    try{await Cloud.send({title:'تحديث سعر الصرف',body,target:'all'});setTimeout(admNotifs,600)}catch(e){toast('السعر انحفظ بس الإشعار ما انرسل')}}})}
 async function loadMarket(){try{const m=await Cloud.market();if(m){S.market=m;save()}}catch(e){}renderMarket();if($('admMarket'))admMarketTxt()}
 function renderMarket(){if($('v-cust').classList.contains('on'))renderCust();const el=$('mktRow');if(!el)return;const m=S.market,c=heroCode(),r=m&&m.rates&&m.rates[c];
   if(!r){el.hidden=true;return}el.hidden=false;el.innerHTML='<span class="mk-l">سعر السوق</span><b class="num">'+fmt(r[0])+'</b><span class="mk-s">/</span><b class="num s">'+fmt(r[1])+'</b><span class="mk-t">'+ago(m.at)+'</span>'}
