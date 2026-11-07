@@ -543,6 +543,9 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
   <div class="sec"><h3>سعر السوق</h3><span class="aux">يطلع لكل الصيرفات كمرجع</span></div>
   <div class="card stack"><div id="admMarket" class="small muted">—</div><button class="btn primary block" onclick="admEditMarket()">تحديث سعر السوق</button></div>
 
+  <div class="sec"><h3>إشعارات الموبايل</h3><span class="aux">شريط الإشعارات</span></div>
+  <div class="card stack" id="admPush"></div>
+
   <div class="sec"><h3>إرسال إشعار</h3></div>
   <div class="card stack">
     <div class="field"><label for="nTitle">العنوان</label><input class="in" id="nTitle" placeholder="مثلاً: تحديث جديد بالتطبيق"></div>
@@ -622,6 +625,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
 
 <div class="sheet" id="notifSheet" role="dialog" aria-label="الإشعارات"><div class="grab"></div>
   <div class="row"><h3 style="flex:1">الإشعارات</h3><button class="link" id="permBtn" onclick="askPerm()">فعّل التنبيهات</button></div>
+  <div class="note stack" id="pushBox" hidden style="margin:8px 0"></div>
   <div id="notifList" style="margin-top:8px"></div>
 </div>
 
@@ -1011,7 +1015,7 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
 const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
-const APP_VER='2.2';
+const APP_VER='2.3';
 /* Online copy: ask the server which version is current; if it is newer, clear the offline cache and reload once. */
 async function checkUpdate(){if(!/^https?:/.test(location.protocol))return;try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.json()).v;
   if(v&&v!==APP_VER&&sessionStorage.getItem('upd')!==v){sessionStorage.setItem('upd',v);try{const k=await caches.keys();await Promise.all(k.map(x=>caches.delete(x)))}catch(e){}location.reload()}}catch(e){}}
@@ -1060,13 +1064,18 @@ const Cloud=(()=>{
   async function market(){if(mode==='fb'){const x=await db.doc('market/today').get();return x.exists?x.data():null}if(mode==='off')return null;return dl().market||null}
   /* Live updates of the market rate, so open screens change the moment the admin publishes. */
   function onMarket(cb){if(mode==='fb')return db.doc('market/today').onSnapshot(d=>cb(d.exists?d.data():null),()=>{})}
+  /* Phone push (web): each browser that allows notifications stores its FCM token; only the admin can read them. */
+  async function messaging(){if(!window.firebase||!firebase.messaging){try{await load('fb/firebase-messaging-compat.js')}catch(e){await load('https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-messaging-compat.js')}}return firebase.messaging()}
+  async function saveToken(t,info){if(mode==='fb')await db.doc('tokens/'+t).set(info)}
+  async function tokens(){if(mode!=='fb')return[];const q=await db.collection('tokens').get();return q.docs.map(x=>({id:x.id,...x.data()}))}
+  async function delToken(t){try{if(mode==='fb')await db.doc('tokens/'+t).delete()}catch(e){}}
   async function setMarket(r){const m={rates:r,at:Date.now(),by:user&&user.email||''};if(mode==='fb'){await db.doc('market/today').set(m);return}const d=dl();d.market=m;ds(d)}
   /* Each install reports itself once per launch, so the admin can count downloads and active devices. */
   async function ping(id,info){try{if(mode==='fb'){await db.doc('devices/'+id).set(info,{merge:true});return}if(mode==='off')return;const d=dl();d.devices=d.devices||{};d.devices[id]={...(d.devices[id]||{}),...info};ds(d)}catch(e){}}
   async function devices(){if(mode==='fb'){const q=await db.collection('devices').get();return q.docs.map(x=>({id:x.id,...x.data()}))}return Object.entries(dl().devices||{}).map(([k,v])=>({id:k,...v}))}
   function onNotifs(cb){if(mode==='fb')return db.collection('notifs').orderBy('at','desc').limit(40).onSnapshot(s=>cb(s.docs.map(x=>({id:x.id,...x.data()}))),()=>{});
     if(mode==='off')return;const f=()=>cb(dl().notifs.slice(0,40));f();addEventListener('storage',e=>{if(e.key===DK)f()});setInterval(f,8000);return f}
-  return{init,register,login,reset,logout,mine,saveMine,market,onMarket,setMarket,ping,devices,active,all,update,send,del,onNotifs,onUser:f=>L.push(f),get user(){return user},get mode(){return mode}}
+  return{init,register,login,reset,logout,mine,saveMine,market,onMarket,setMarket,messaging,saveToken,tokens,delToken,ping,devices,active,all,update,send,del,onNotifs,onUser:f=>L.push(f),get user(){return user},get mode(){return mode}}
 })();
 
 /* ---- account card ---- */
@@ -1125,12 +1134,51 @@ function forMe(n){if(isCust())return n.target==='all'||!n.target||n.target==='cu
 function renderNotifs(){const list=NOTIFS.filter(forMe),seen=S.seenN||0,unread=list.filter(n=>n.at>seen).length;
   $('bellN').hidden=!unread;$('bellN').textContent=unread>9?'9+':unread;
   $('notifList').innerHTML=list.map(n=>'<div class="nt'+(n.at>seen?' new':'')+'"><b>'+esc(n.title||'إشعار')+'</b><p>'+esc(n.body||'')+'</p><small>'+ago(n.at)+'</small></div>').join('')||'<div class="muted small" style="padding:20px 0;text-align:center">ماكو إشعارات بعد</div>';
-  $('permBtn').hidden=window.Native&&Native.notifOn?!!Native.notifOn():(!('Notification' in window)||Notification.permission==='granted')}
+  $('permBtn').hidden=window.Native&&Native.notifOn?!!Native.notifOn():true;pushBox()}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function openNotifs(){renderNotifs();openSheet('notifSheet');const top=NOTIFS.filter(forMe)[0];if(top){S.seenN=top.at;save();setTimeout(renderNotifs,1500)}}
 async function askPerm(){if(window.Native&&Native.askNotif){Native.askNotif();setTimeout(renderNotifs,4000);return}try{const p=await Notification.requestPermission();toast(p==='granted'?'تم تفعيل التنبيهات ✓':'ما انسمح بالتنبيهات');renderNotifs()}catch(e){toast('الجهاز ما يدعم التنبيهات')}}
 async function sysNotify(n){if(window.Native&&Native.notice){Native.notice(n.title||'صرفلي',n.body||'');return}try{if(!('Notification' in window)||Notification.permission!=='granted')return;const o={body:n.body||'',icon:'icon-192.png',badge:'icon-192.png',tag:'n'+n.at};
   const r=navigator.serviceWorker&&await navigator.serviceWorker.getRegistration();r?r.showNotification(n.title||'صرفلي',o):new Notification(n.title||'صرفلي',o)}catch(e){}}
+/* ---- phone push (Chrome on Android, Safari on iPhone/iPad once added to the Home Screen) ---- */
+const VAPID='';
+const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+function pushState(){if(window.Native||Cloud.mode!=='fb'||!VAPID)return'none';if(isIOS&&!standalone)return'home';if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))return'none';
+  return Notification.permission==='granted'?(S.pushTok?'on':'ask'):Notification.permission==='denied'?'denied':'ask'}
+async function pushSetup(ask){const st=pushState();if(st==='none'||st==='home'||st==='denied')return st;
+  try{if(Notification.permission!=='granted'){if(!ask)return'ask';if(await Notification.requestPermission()!=='granted')return'denied'}
+    const reg=await navigator.serviceWorker.ready,m=await Cloud.messaging(),t=await m.getToken({vapidKey:VAPID,serviceWorkerRegistration:reg});if(!t)return'ask';
+    const u=Cloud.user,paid=!isCust()&&(!!paidUntil()||(licState().ok&&!licState().trial));
+    await Cloud.saveToken(t,{role:isCust()?'cust':u?(u.admin?'admin':'shop'):'guest',paid,at:Date.now()});S.pushTok=t;save();return'on'}catch(e){console.warn('push',e);return'err'}}
+function pushBox(){const st=pushState(),el=$('pushBox');if(!el)return;el.hidden=!(st==='ask'||st==='home'||st==='denied');
+  el.innerHTML=st==='home'?'<b>حتى توصلك الإشعارات على الايباد/الآيفون</b><p class="small">دوس زر المشاركة <span style="font-size:16px">⎋</span> ← «Add to Home Screen» (إضافة إلى الشاشة الرئيسية)، وافتح التطبيق من الأيقونة.</p>'
+   :st==='denied'?'<b>الإشعارات مقفولة</b><p class="small">فعّلها من إعدادات المتصفح أو الموبايل لهذا الموقع.</p>'
+   :'<b>خلّي الإشعارات توصل لموبايلك</b><p class="small">حتى لو التطبيق مسكّر، أول ما يتغير السعر.</p><button class="btn primary block" onclick="pushOn()">فعّل الإشعارات</button>'}
+async function pushOn(){const r=await pushSetup(true);toast(r==='on'?'تم تفعيل الإشعارات ✓':r==='denied'?'ما انسمح بالإشعارات':'ما كدرنا نفعّلها، حاول مرة ثانية');pushBox();renderNotifs()}
+/* Admin side: the service-account key stays only in this browser (never uploaded). It signs a token and sends to each saved phone. */
+const SA_KEY='sarrifli.sa';let gTok=null;
+function getSA(){try{return JSON.parse(localStorage.getItem(SA_KEY))}catch(e){return null}}
+const b64u=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const b64uStr=t=>b64u(new TextEncoder().encode(t));
+async function gAccess(sa){if(gTok&&gTok.exp>Date.now()+60000)return gTok.t;const now=Math.floor(Date.now()/1000);
+  const unsigned=b64uStr(JSON.stringify({alg:'RS256',typ:'JWT'}))+'.'+b64uStr(JSON.stringify({iss:sa.client_email,scope:'https://www.googleapis.com/auth/firebase.messaging',aud:'https://oauth2.googleapis.com/token',iat:now,exp:now+3600}));
+  const der=Uint8Array.from(atob(sa.private_key.replace(/-----[^-]+-----/g,'').replace(/\s+/g,'')),c=>c.charCodeAt(0));
+  const key=await crypto.subtle.importKey('pkcs8',der,{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['sign']);
+  const sig=await crypto.subtle.sign('RSASSA-PKCS1-v1_5',key,new TextEncoder().encode(unsigned));
+  const r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'grant_type='+encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer')+'&assertion='+unsigned+'.'+b64u(sig)});
+  const j=await r.json();if(!j.access_token)throw new Error(j.error_description||'token');gTok={t:j.access_token,exp:Date.now()+(j.expires_in||3600)*1000};return gTok.t}
+async function pushAll(n){const sa=getSA();if(!sa||Cloud.mode!=='fb')return null;const at=await gAccess(sa),L=await Cloud.tokens();
+  const want=t=>n.target==='cust'?t.role==='cust':n.target==='paid'?!!t.paid:n.target==='free'?(!t.paid&&t.role!=='cust'):true;
+  const url='https://fcm.googleapis.com/v1/projects/'+(sa.project_id||FB_CONFIG.projectId)+'/messages:send';let ok=0;const list=L.filter(want);
+  for(let i=0;i<list.length;i+=20)await Promise.all(list.slice(i,i+20).map(async t=>{try{const r=await fetch(url,{method:'POST',headers:{Authorization:'Bearer '+at,'Content-Type':'application/json'},
+    body:JSON.stringify({message:{token:t.id,data:{title:String(n.title||'صرفلي'),body:String(n.body||'')},webpush:{headers:{Urgency:'high',TTL:'86400'}}}})});
+    if(r.ok)ok++;else if(r.status===404||r.status===400)Cloud.delToken(t.id)}catch(e){}}));return{ok,all:list.length}}
+async function notifyAll(n){await Cloud.send(n);let p=null;try{p=await pushAll(n)}catch(e){console.warn(e)}return p}
+function renderPushAdm(){const el=$('admPush');if(!el)return;const sa=getSA();
+  el.innerHTML=sa?'<div class="row"><b style="flex:1">مربوط ✓</b><span class="small muted num">'+esc(sa.client_email.split('@')[0])+'</span></div><div class="small muted">الإشعارات توصل لشريط الإشعارات بالموبايلات من هذا الجهاز.</div><button class="btn block" onclick="if(confirm(\'تفصل الإشعارات من هذا الجهاز؟\')){localStorage.removeItem(SA_KEY);gTok=null;renderPushAdm()}">فصل</button>'
+   :'<div class="small muted">حتى توصل الإشعارات لشريط الإشعارات بموبايلات الناس، ارفع ملف المفتاح (JSON) من Firebase مرة وحدة. الملف يبقى بس بهذا الجهاز.</div><label class="btn primary block">رفع ملف المفتاح<input type="file" accept=".json,application/json" hidden id="saIn"></label>';
+  const i=$('saIn');if(i)i.onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());if(!j.private_key||!j.client_email)throw 0;localStorage.setItem(SA_KEY,JSON.stringify(j));gTok=null;await gAccess(j);toast('تم الربط ✓');renderPushAdm()}catch(x){toast('الملف مو صحيح')}}}
 function startNotifs(){Cloud.onNotifs(list=>{const prevTop=S.lastN||0;NOTIFS=list;const fresh=list.filter(n=>n.at>prevTop&&forMe(n));
   if(list[0]){if(prevTop&&fresh.length){fresh.slice(0,3).forEach(sysNotify);toast('🔔 '+(fresh[0].title||'إشعار جديد'))}S.lastN=list[0].at;save()}nativeSync();renderNotifs()})}
 /* The Android app checks the server for new notices in the background (every ~15 min), even when closed. */
@@ -1139,7 +1187,7 @@ function nativeSync(){try{if(window.Native&&Native.sync)Native.sync(FB_CONFIG?FB
 /* ---- admin panel ---- */
 let admOffices=[],admF='all';
 function guardAdmin(){if(!Cloud.user||!Cloud.user.admin){toast('سجل دخول بحساب المدير أول');go('set');return false}return true}
-async function admLoad(){if(!guardAdmin())return;loadMarket();$('admMode').textContent=Cloud.mode==='demo'?'وضع تجريبي':'';
+async function admLoad(){if(!guardAdmin())return;renderPushAdm();loadMarket();$('admMode').textContent=Cloud.mode==='demo'?'وضع تجريبي':'';
   try{admOffices=await Cloud.all()}catch(e){toast('ما كدرنا نجيب الصيرفات');admOffices=[]}
   let devs=[];try{devs=await Cloud.devices()}catch(e){}
   const now=Date.now(),day=864e5,act=admOffices.filter(o=>o.status==='active'&&o.expires>now).length,pen=admOffices.filter(o=>o.status==='pending'||!o.status).length,
@@ -1169,7 +1217,7 @@ function admEditMarket(){if(!guardAdmin())return;openEdit('USD',{rates:(S.market
     /* Every market-rate change also goes out as a notice to everyone, listing the currencies that moved. */
     const ch=CURS.filter(c=>r[c.code]&&String(r[c.code])!==String(old[c.code]||''));if(!ch.length)return;
     const body=ch.map(c=>{const v=r[c.code],o=old[c.code],arr=o&&o[1]!=null&&v[1]!=null&&v[1]!==o[1]?(v[1]>o[1]?' ▲':' ▼'):'';return c.flag+' '+shortNm(c)+' ('+perShort(c)+'): شراء '+fmt(v[0])+' · بيع '+fmt(v[1])+arr}).join('\n');
-    try{await Cloud.send({title:'تحديث سعر الصرف',body,target:'all'});setTimeout(admNotifs,600)}catch(e){toast('السعر انحفظ بس الإشعار ما انرسل')}}})}
+    try{const p=await notifyAll({title:'تحديث سعر الصرف',body,target:'all'});if(p)toast('وصل الإشعار لـ '+p.ok+' موبايل');setTimeout(admNotifs,600)}catch(e){toast('السعر انحفظ بس الإشعار ما انرسل')}}})}
 async function loadMarket(){try{const m=await Cloud.market();if(m){S.market=m;save()}}catch(e){}renderMarket();if($('admMarket'))admMarketTxt()}
 function renderMarket(){if($('v-cust').classList.contains('on'))renderCust();const el=$('mktRow');if(!el)return;const m=S.market,c=heroCode(),r=m&&m.rates&&m.rates[c];
   if(!r){el.hidden=true;return}el.hidden=false;el.innerHTML='<span class="mk-l">سعر السوق</span><b class="num">'+fmt(r[0])+'</b><span class="mk-s">/</span><b class="num s">'+fmt(r[1])+'</b><span class="mk-t">'+ago(m.at)+'</span>'}
@@ -1177,7 +1225,7 @@ function admNotifs(){$('admNotifs').innerHTML=NOTIFS.length?'<div class="small m
   $('admNotifs').querySelectorAll('[data-id]').forEach(b=>b.onclick=async()=>{try{await Cloud.del(b.dataset.id);NOTIFS=NOTIFS.filter(n=>n.id!==b.dataset.id);admNotifs();renderNotifs()}catch(e){toast('ما انحذف')}})}
 let nTarget='all';tg('nTarget',v=>nTarget=v);tg('admFilter',v=>{admF=v;admRender()});
 async function admSend(){if(!guardAdmin())return;const t=$('nTitle').value.trim(),b=$('nBody').value.trim();if(!t&&!b){toast('اكتب الرسالة');return}
-  try{await Cloud.send({title:t,body:b,target:nTarget});$('nTitle').value='';$('nBody').value='';toast('تم إرسال الإشعار ✓');setTimeout(admNotifs,600)}catch(e){toast('ما انرسل، تأكد من الإنترنت')}}
+  try{const p=await notifyAll({title:t,body:b,target:nTarget});$('nTitle').value='';$('nBody').value='';toast(p?'تم الإرسال ✓ وصل لـ '+p.ok+' موبايل':'تم إرسال الإشعار ✓');setTimeout(admNotifs,600)}catch(e){toast('ما انرسل، تأكد من الإنترنت')}}
 let logoTaps=0;$('hLogo').onclick=()=>{if(++logoTaps>=5){logoTaps=0;go(Cloud.user&&Cloud.user.admin?'admin':'set');if(!(Cloud.user&&Cloud.user.admin))toast('سجل دخول بحساب المدير')}setTimeout(()=>logoTaps=0,2000)};
 
 /* ---- converter ---- */
@@ -1291,7 +1339,7 @@ function renderCust(){if(!$('cMkt'))return;const m=S.market,R=(m&&m.rates)||{},L
   $('cGlobal').innerHTML=$('gList').innerHTML}
 function renderAll(){applyRole();applyTheme();renderHeader();renderAcct();renderHome();renderSet();renderConv();renderGlobal();
   if($('v-share').classList.contains('on'))drawShot();if($('v-near').classList.contains('on'))renderNear()}
-try{renderAll()}catch(e){console.error(e);showErr(e&&e.message)}Cloud.init().then(()=>{keepNative();devPing();startNotifs();nativeSync();loadMarket();setInterval(loadMarket,6e5);Cloud.onMarket(m=>{if(!m)return;S.market=m;save();renderMarket();if($('admMarket'))admMarketTxt()});renderSetup();if(location.hash==='#admin')go('admin')});loadGlobal();setInterval(()=>loadGlobal(),36e5);
+try{renderAll()}catch(e){console.error(e);showErr(e&&e.message)}Cloud.init().then(()=>{keepNative();setTimeout(()=>pushSetup(false).then(pushBox),2500);devPing();startNotifs();nativeSync();loadMarket();setInterval(loadMarket,6e5);Cloud.onMarket(m=>{if(!m)return;S.market=m;save();renderMarket();if($('admMarket'))admMarketTxt()});renderSetup();if(location.hash==='#admin')go('admin')});loadGlobal();setInterval(()=>loadGlobal(),36e5);
 setInterval(()=>{tickClock();const [cls,txt]=pubState(),ps=$('pubStatus');ps.className='status '+cls;ps.textContent=txt},30000);
 let rsT;addEventListener('resize',()=>{clearTimeout(rsT);rsT=setTimeout(()=>{drawSpark();if($('v-near').classList.contains('on'))renderNear()},150)});
 if(S.ob==null)S.ob=1;
