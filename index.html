@@ -1015,7 +1015,7 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
 const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
-const APP_VER='2.5';
+const APP_VER='2.6';
 /* Online copy: ask the server which version is current; if it is newer, clear the offline cache and reload once. */
 async function checkUpdate(){if(!/^https?:/.test(location.protocol))return;try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.json()).v;
   if(v&&v!==APP_VER&&sessionStorage.getItem('upd')!==v){sessionStorage.setItem('upd',v);try{const k=await caches.keys();await Promise.all(k.map(x=>caches.delete(x)))}catch(e){}location.reload()}}catch(e){}}
@@ -1151,8 +1151,10 @@ async function pushSetup(ask){const st=pushState();if(st==='none'||st==='home'||
     const reg=await navigator.serviceWorker.ready,m=await Cloud.messaging(),t=await m.getToken({vapidKey:VAPID,serviceWorkerRegistration:reg});if(!t)return'ask';
     const u=Cloud.user,paid=!isCust()&&(!!paidUntil()||(licState().ok&&!licState().trial));
     await Cloud.saveToken(t,{role:isCust()?'cust':u?(u.admin?'admin':'shop'):'guest',paid,at:Date.now()});S.pushTok=t;S.pushErr='';save();return'on'}catch(e){console.warn('push',e);S.pushErr=String(e&&(e.code||e.message)||e).slice(0,120);save();return'err'}}
-function pushBox(){const st=pushState(),el=$('pushBox');if(!el)return;el.hidden=st==='none';
-  el.innerHTML=st==='on'?'<div class="row"><b style="flex:1">✓ هذا الجهاز مسجّل للإشعارات</b><button class="link" onclick="S.pushTok=\'\';save();pushOn()">إعادة التسجيل</button></div>'
+function pushWhy(){const m=[];if(window.Native)m.push('Native');m.push('cloud:'+Cloud.mode);if(!('serviceWorker' in navigator))m.push('no-SW');if(!('PushManager' in window))m.push('no-Push');if(!('Notification' in window))m.push('no-Notif');m.push(isIOS?'iOS':'other');m.push(standalone?'standalone':'browser');return m.join(' · ')}
+function pushBox(){const st=pushState(),el=$('pushBox');if(!el)return;el.hidden=!!window.Native;
+  el.innerHTML=st==='none'?'<b>الجهاز ما يدعم إشعارات الخلفية بهذي الطريقة</b><p class="small num" dir="ltr">'+esc(pushWhy())+'</p>'
+   :st==='on'?'<div class="row"><b style="flex:1">✓ هذا الجهاز مسجّل للإشعارات</b><button class="link" onclick="S.pushTok=\'\';save();pushOn()">إعادة التسجيل</button></div>'
    :st==='home'?'<b>حتى توصلك الإشعارات على الايباد/الآيفون</b><p class="small">دوس زر المشاركة <span style="font-size:16px">⎋</span> ← «Add to Home Screen» (إضافة إلى الشاشة الرئيسية)، وافتح التطبيق من الأيقونة.</p>'
    :st==='denied'?'<b>الإشعارات مقفولة</b><p class="small">فعّلها من إعدادات المتصفح أو الموبايل لهذا الموقع.</p>'
    :'<b>خلّي الإشعارات توصل لموبايلك</b><p class="small">حتى لو التطبيق مسكّر، أول ما يتغير السعر.</p>'+(S.pushErr?'<p class="small" style="color:var(--neg)">آخر محاولة ما نجحت: '+esc(S.pushErr)+'</p>':'')+'<button class="btn primary block" onclick="pushOn()">فعّل الإشعارات</button>'}
