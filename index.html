@@ -1011,7 +1011,11 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
 const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
-const APP_VER='2.0';
+const APP_VER='2.1';
+/* Online copy: ask the server which version is current; if it is newer, clear the offline cache and reload once. */
+async function checkUpdate(){if(!/^https?:/.test(location.protocol))return;try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.json()).v;
+  if(v&&v!==APP_VER&&sessionStorage.getItem('upd')!==v){sessionStorage.setItem('upd',v);try{const k=await caches.keys();await Promise.all(k.map(x=>caches.delete(x)))}catch(e){}location.reload()}}catch(e){}}
+setTimeout(checkUpdate,1500);document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate()});
 const ADMIN_DEMO={email:'admin@sarrifli.app',h:'1a3141d98f29c2658a3340888ccc74913b72e22f5aef462ddb3ae931976bce1e'};
 async function sha256(t){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
 /* People sign in with a simple username (no email needed). Internally it becomes username@sarrifli.app. */
