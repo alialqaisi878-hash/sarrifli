@@ -1015,7 +1015,7 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
 const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
-const APP_VER='2.7';
+const APP_VER='2.8';
 /* Online copy: ask the server which version is current; if it is newer, clear the offline cache and reload once. */
 async function checkUpdate(){if(!/^https?:/.test(location.protocol))return;try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.json()).v;
   if(v&&v!==APP_VER&&sessionStorage.getItem('upd')!==v){sessionStorage.setItem('upd',v);try{const k=await caches.keys();await Promise.all(k.map(x=>caches.delete(x)))}catch(e){}location.reload()}}catch(e){}}
@@ -1060,6 +1060,7 @@ const Cloud=(()=>{
   async function update(id,patch){if(mode==='fb'){await db.doc('offices/'+id).update(patch);return}const d=dl();d.offices[id]={...d.offices[id],...patch};ds(d)}
   async function send(n){n={...n,at:n.at||Date.now(),by:user&&user.email||''};if(mode==='fb'){await db.collection('notifs').add(n);return}const d=dl();d.notifs.unshift({id:'n'+Date.now(),...n});ds(d);try{bc&&bc.postMessage('notif')}catch(e){}}
   async function del(id){if(mode==='fb'){await db.doc('notifs/'+id).delete();return}const d=dl();d.notifs=d.notifs.filter(x=>x.id!==id);ds(d)}
+  async function delAll(){if(mode==='fb'){const q=await db.collection('notifs').get();let n=0;for(let i=0;i<q.docs.length;i+=400){const b=db.batch();q.docs.slice(i,i+400).forEach(x=>b.delete(x.ref));await b.commit();n+=Math.min(400,q.docs.length-i)}return n}const d=dl(),n=d.notifs.length;d.notifs=[];ds(d);return n}
   /* Market rates set by the admin, shown to every shop as a reference. */
   async function market(){if(mode==='fb'){const x=await db.doc('market/today').get();return x.exists?x.data():null}if(mode==='off')return null;return dl().market||null}
   /* Live updates of the market rate, so open screens change the moment the admin publishes. */
@@ -1075,7 +1076,7 @@ const Cloud=(()=>{
   async function devices(){if(mode==='fb'){const q=await db.collection('devices').get();return q.docs.map(x=>({id:x.id,...x.data()}))}return Object.entries(dl().devices||{}).map(([k,v])=>({id:k,...v}))}
   function onNotifs(cb){if(mode==='fb')return db.collection('notifs').orderBy('at','desc').limit(40).onSnapshot(s=>cb(s.docs.map(x=>({id:x.id,...x.data()}))),()=>{});
     if(mode==='off')return;const f=()=>cb(dl().notifs.slice(0,40));f();addEventListener('storage',e=>{if(e.key===DK)f()});setInterval(f,8000);return f}
-  return{init,register,login,reset,logout,mine,saveMine,market,onMarket,setMarket,messaging,saveToken,tokens,delToken,ping,devices,active,all,update,send,del,onNotifs,onUser:f=>L.push(f),get user(){return user},get mode(){return mode}}
+  return{init,register,login,reset,logout,mine,saveMine,market,onMarket,setMarket,messaging,saveToken,tokens,delToken,ping,devices,active,all,update,send,del,delAll,onNotifs,onUser:f=>L.push(f),get user(){return user},get mode(){return mode}}
 })();
 
 /* ---- account card ---- */
@@ -1230,7 +1231,8 @@ function admEditMarket(){if(!guardAdmin())return;openEdit('USD',{rates:(S.market
 async function loadMarket(){try{const m=await Cloud.market();if(m){S.market=m;save()}}catch(e){}renderMarket();if($('admMarket'))admMarketTxt()}
 function renderMarket(){if($('v-cust').classList.contains('on'))renderCust();const el=$('mktRow');if(!el)return;const m=S.market,c=heroCode(),r=m&&m.rates&&m.rates[c];
   if(!r){el.hidden=true;return}el.hidden=false;el.innerHTML='<span class="mk-l">سعر السوق</span><b class="num">'+fmt(r[0])+'</b><span class="mk-s">/</span><b class="num s">'+fmt(r[1])+'</b><span class="mk-t">'+ago(m.at)+'</span>'}
-function admNotifs(){$('admNotifs').innerHTML=NOTIFS.length?'<div class="small muted" style="margin-top:6px">الإشعارات المرسلة</div>'+NOTIFS.slice(0,10).map(n=>'<div class="nt"><div class="row"><b style="flex:1">'+esc(n.title||'')+'</b><button class="link" data-id="'+n.id+'" style="color:var(--neg)">حذف</button></div><p>'+esc(n.body||'')+'</p><small>'+ago(n.at)+' · '+({all:'الكل',paid:'المشتركين',free:'غير المشتركين',cust:'الزبائن'}[n.target]||'الكل')+'</small></div>').join(''):'';
+async function admDelAll(){if(!guardAdmin()||!confirm('تحذف كل الإشعارات من عند الجميع؟ ما ترجع.'))return;try{const n=await Cloud.delAll();NOTIFS=[];admNotifs();renderNotifs();toast('انحذفت '+n+' إشعار ✓')}catch(e){toast('ما انحذفت: '+(e.code||e.message))}}
+function admNotifs(){$('admNotifs').innerHTML=NOTIFS.length?'<div class="row" style="margin-top:6px"><span class="small muted" style="flex:1">الإشعارات المرسلة</span><button class="link" style="color:var(--neg)" onclick="admDelAll()">حذف الكل</button></div>'+NOTIFS.slice(0,10).map(n=>'<div class="nt"><div class="row"><b style="flex:1">'+esc(n.title||'')+'</b><button class="link" data-id="'+n.id+'" style="color:var(--neg)">حذف</button></div><p>'+esc(n.body||'')+'</p><small>'+ago(n.at)+' · '+({all:'الكل',paid:'المشتركين',free:'غير المشتركين',cust:'الزبائن'}[n.target]||'الكل')+'</small></div>').join(''):'';
   $('admNotifs').querySelectorAll('[data-id]').forEach(b=>b.onclick=async()=>{try{await Cloud.del(b.dataset.id);NOTIFS=NOTIFS.filter(n=>n.id!==b.dataset.id);admNotifs();renderNotifs()}catch(e){toast('ما انحذف')}})}
 let nTarget='all';tg('nTarget',v=>nTarget=v);tg('admFilter',v=>{admF=v;admRender()});
 async function admSend(){if(!guardAdmin())return;const t=$('nTitle').value.trim(),b=$('nBody').value.trim();if(!t&&!b){toast('اكتب الرسالة');return}
