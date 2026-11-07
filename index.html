@@ -1015,7 +1015,7 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
 const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
-const APP_VER='2.3';
+const APP_VER='2.4';
 /* Online copy: ask the server which version is current; if it is newer, clear the offline cache and reload once. */
 async function checkUpdate(){if(!/^https?:/.test(location.protocol))return;try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.json()).v;
   if(v&&v!==APP_VER&&sessionStorage.getItem('upd')!==v){sessionStorage.setItem('upd',v);try{const k=await caches.keys();await Promise.all(k.map(x=>caches.delete(x)))}catch(e){}location.reload()}}catch(e){}}
@@ -1141,7 +1141,7 @@ async function askPerm(){if(window.Native&&Native.askNotif){Native.askNotif();se
 async function sysNotify(n){if(window.Native&&Native.notice){Native.notice(n.title||'صرفلي',n.body||'');return}try{if(!('Notification' in window)||Notification.permission!=='granted')return;const o={body:n.body||'',icon:'icon-192.png',badge:'icon-192.png',tag:'n'+n.at};
   const r=navigator.serviceWorker&&await navigator.serviceWorker.getRegistration();r?r.showNotification(n.title||'صرفلي',o):new Notification(n.title||'صرفلي',o)}catch(e){}}
 /* ---- phone push (Chrome on Android, Safari on iPhone/iPad once added to the Home Screen) ---- */
-const VAPID='';
+const VAPID='BLthBVXwWF_xusDbPdvTv4oqj_FevSILUKceyAmfa9YPTspDqVmNa9z-gaplEZB9GmsBo00yETIxWhCJC8Fw_ik';
 const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
 function pushState(){if(window.Native||Cloud.mode!=='fb'||!VAPID)return'none';if(isIOS&&!standalone)return'home';if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))return'none';
