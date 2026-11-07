@@ -1011,7 +1011,7 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
 const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
-const APP_VER='2.1';
+const APP_VER='2.2';
 /* Online copy: ask the server which version is current; if it is newer, clear the offline cache and reload once. */
 async function checkUpdate(){if(!/^https?:/.test(location.protocol))return;try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.json()).v;
   if(v&&v!==APP_VER&&sessionStorage.getItem('upd')!==v){sessionStorage.setItem('upd',v);try{const k=await caches.keys();await Promise.all(k.map(x=>caches.delete(x)))}catch(e){}location.reload()}}catch(e){}}
@@ -1058,13 +1058,15 @@ const Cloud=(()=>{
   async function del(id){if(mode==='fb'){await db.doc('notifs/'+id).delete();return}const d=dl();d.notifs=d.notifs.filter(x=>x.id!==id);ds(d)}
   /* Market rates set by the admin, shown to every shop as a reference. */
   async function market(){if(mode==='fb'){const x=await db.doc('market/today').get();return x.exists?x.data():null}if(mode==='off')return null;return dl().market||null}
+  /* Live updates of the market rate, so open screens change the moment the admin publishes. */
+  function onMarket(cb){if(mode==='fb')return db.doc('market/today').onSnapshot(d=>cb(d.exists?d.data():null),()=>{})}
   async function setMarket(r){const m={rates:r,at:Date.now(),by:user&&user.email||''};if(mode==='fb'){await db.doc('market/today').set(m);return}const d=dl();d.market=m;ds(d)}
   /* Each install reports itself once per launch, so the admin can count downloads and active devices. */
   async function ping(id,info){try{if(mode==='fb'){await db.doc('devices/'+id).set(info,{merge:true});return}if(mode==='off')return;const d=dl();d.devices=d.devices||{};d.devices[id]={...(d.devices[id]||{}),...info};ds(d)}catch(e){}}
   async function devices(){if(mode==='fb'){const q=await db.collection('devices').get();return q.docs.map(x=>({id:x.id,...x.data()}))}return Object.entries(dl().devices||{}).map(([k,v])=>({id:k,...v}))}
   function onNotifs(cb){if(mode==='fb')return db.collection('notifs').orderBy('at','desc').limit(40).onSnapshot(s=>cb(s.docs.map(x=>({id:x.id,...x.data()}))),()=>{});
     if(mode==='off')return;const f=()=>cb(dl().notifs.slice(0,40));f();addEventListener('storage',e=>{if(e.key===DK)f()});setInterval(f,8000);return f}
-  return{init,register,login,reset,logout,mine,saveMine,market,setMarket,ping,devices,active,all,update,send,del,onNotifs,onUser:f=>L.push(f),get user(){return user},get mode(){return mode}}
+  return{init,register,login,reset,logout,mine,saveMine,market,onMarket,setMarket,ping,devices,active,all,update,send,del,onNotifs,onUser:f=>L.push(f),get user(){return user},get mode(){return mode}}
 })();
 
 /* ---- account card ---- */
@@ -1289,7 +1291,7 @@ function renderCust(){if(!$('cMkt'))return;const m=S.market,R=(m&&m.rates)||{},L
   $('cGlobal').innerHTML=$('gList').innerHTML}
 function renderAll(){applyRole();applyTheme();renderHeader();renderAcct();renderHome();renderSet();renderConv();renderGlobal();
   if($('v-share').classList.contains('on'))drawShot();if($('v-near').classList.contains('on'))renderNear()}
-try{renderAll()}catch(e){console.error(e);showErr(e&&e.message)}Cloud.init().then(()=>{keepNative();devPing();startNotifs();nativeSync();loadMarket();setInterval(loadMarket,6e5);renderSetup();if(location.hash==='#admin')go('admin')});loadGlobal();setInterval(()=>loadGlobal(),36e5);
+try{renderAll()}catch(e){console.error(e);showErr(e&&e.message)}Cloud.init().then(()=>{keepNative();devPing();startNotifs();nativeSync();loadMarket();setInterval(loadMarket,6e5);Cloud.onMarket(m=>{if(!m)return;S.market=m;save();renderMarket();if($('admMarket'))admMarketTxt()});renderSetup();if(location.hash==='#admin')go('admin')});loadGlobal();setInterval(()=>loadGlobal(),36e5);
 setInterval(()=>{tickClock();const [cls,txt]=pubState(),ps=$('pubStatus');ps.className='status '+cls;ps.textContent=txt},30000);
 let rsT;addEventListener('resize',()=>{clearTimeout(rsT);rsT=setTimeout(()=>{drawSpark();if($('v-near').classList.contains('on'))renderNear()},150)});
 if(S.ob==null)S.ob=1;
