@@ -7,8 +7,8 @@ import com.google.firebase.FirebaseOptions;
 /* Starts Firebase from the values below (no google-services.json plugin needed). */
 public class App extends Application {
     /* From Firebase Console: Project settings > Your apps > Android app (com.alsaqi.sarrifli). */
-    static final String APP_ID = "ANDROID_APP_ID";
-    static final String API_KEY = "AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw";
+    static final String APP_ID = "1:452057270832:android:37b03032816bd405c93bf5";
+    static final String API_KEY = "AIzaSyCz-2tys1jMG5wmmztmG84mdtc1PaNRnGc";
     static final String PROJECT = "sarrifli-a37aa";
     static final String SENDER = "452057270832";
 
