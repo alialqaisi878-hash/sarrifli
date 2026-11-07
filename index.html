@@ -1010,8 +1010,8 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
 /* ================= cloud (accounts, offices directory, notifications) =================
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
-const FB_CONFIG=null;
-const APP_VER='1.8';
+const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
+const APP_VER='1.9';
 const ADMIN_DEMO={email:'admin@sarrifli.app',h:'1a3141d98f29c2658a3340888ccc74913b72e22f5aef462ddb3ae931976bce1e'};
 async function sha256(t){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
 /* People sign in with a simple username (no email needed). Internally it becomes username@sarrifli.app. */
@@ -1027,7 +1027,8 @@ const Cloud=(()=>{
   const msg=e=>{const c=(e&&e.code)||'';return c.includes('email-already')?'هذا الاسم مستخدم، اختار اسم ثاني':c.includes('invalid-email')?'الإيميل مكتوب غلط':c.includes('weak-password')?'كلمة السر ضعيفة (6 أحرف أو أكثر)':
     (c.includes('wrong-password')||c.includes('user-not-found')||c.includes('invalid-credential'))?'اسم المستخدم أو الرمز غلط':c.includes('network')?'ماكو إنترنت':typeof e==='string'?e:'صار خطأ، حاول مرة ثانية'};
   async function init(){
-    if(mode==='fb'){try{const b='https://cdn.jsdelivr.net/npm/firebase@10.12.2/';await load(b+'firebase-app-compat.js');await load(b+'firebase-auth-compat.js');await load(b+'firebase-firestore-compat.js');
+    if(mode==='fb'){try{/* Firebase 10.12.2 ships next to the app (fb/); the CDN is only a fallback. */
+      const fl=async f=>{try{await load('fb/'+f)}catch(e){await load('https://cdn.jsdelivr.net/npm/firebase@10.12.2/'+f)}};await fl('firebase-app-compat.js');await fl('firebase-auth-compat.js');await fl('firebase-firestore-compat.js');
         firebase.initializeApp(FB_CONFIG);auth=firebase.auth();db=firebase.firestore();try{await db.enablePersistence({synchronizeTabs:true})}catch(e){}
         auth.onAuthStateChanged(async u=>{if(u){let admin=false;try{admin=(await db.doc('admins/'+u.uid).get()).exists}catch(e){}user={uid:u.uid,email:u.email,admin}}else user=null;emit()});
       }catch(e){console.warn('cloud offline',e);mode='off';emit()}}
