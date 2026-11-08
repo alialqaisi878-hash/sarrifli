@@ -1018,7 +1018,7 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
 const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
-const APP_VER='3.0';
+const APP_VER='3.1';
 /* Online copy: ask the server which version is current; if it is newer, clear the offline cache and reload once. */
 async function checkUpdate(){if(!/^https?:/.test(location.protocol))return;try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.json()).v;
   if(v&&v!==APP_VER&&sessionStorage.getItem('upd')!==v){sessionStorage.setItem('upd',v);try{const k=await caches.keys();await Promise.all(k.map(x=>caches.delete(x)))}catch(e){}location.reload()}}catch(e){}}
@@ -1053,6 +1053,12 @@ const Cloud=(()=>{
     if(email===ADMIN_DEMO.email){let ok=false;try{ok=await sha256(String(pass))===ADMIN_DEMO.h}catch(e){}if(!ok)throw'اسم المستخدم أو الرمز غلط';setMe({uid:'admin',email,admin:true});return}
     const u=dl().users[email];if(!u||u.pass!==String(h53(pass)))throw'اسم المستخدم أو الرمز غلط';setMe({uid:u.uid,email,admin:false})}
   async function reset(email){if(mode!=='fb')throw'بالوضع التجريبي ماكو استرجاع';try{await auth.sendPasswordResetEmail(String(email).trim())}catch(e){throw msg(e)}}
+  /* The owner deletes their own account: office data first (or blanked if the rules don't allow delete yet), then the login. */
+  async function deleteMe(pass){if(!user)return;if(mode==='fb'){const u=auth.currentUser;
+      try{await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,pass))}catch(e){throw msg(e)}
+      const ref=db.doc('offices/'+u.uid);try{await ref.delete()}catch(e){try{await ref.set({name:'',phone:'',addr:'',lat:null,lng:null,logo:'',rates:{},pub:0,deleted:true},{merge:true})}catch(x){}}
+      await u.delete();return}
+    const d=dl(),uu=d.users[user.email];if(!uu||uu.pass!==String(h53(pass)))throw'الرمز غلط';delete d.users[user.email];if(d.offices)delete d.offices[user.uid];ds(d);setMe(null)}
   async function logout(){if(mode==='fb')await auth.signOut();else setMe(null)}
   async function mine(){if(!user||user.admin&&mode==='demo')return null;if(mode==='fb'){const s=await db.doc('offices/'+user.uid).get();return s.exists?s.data():null}return dl().offices[user.uid]||null}
   async function saveMine(data){if(!user||user.admin&&mode==='demo')return;if(mode==='fb'){await db.doc('offices/'+user.uid).set(data,{merge:true});return}
@@ -1081,7 +1087,7 @@ const Cloud=(()=>{
   async function devices(){if(mode==='fb'){const q=await db.collection('devices').get();return q.docs.map(x=>({id:x.id,...x.data()}))}return Object.entries(dl().devices||{}).map(([k,v])=>({id:k,...v}))}
   function onNotifs(cb){if(mode==='fb')return db.collection('notifs').orderBy('at','desc').limit(40).onSnapshot(s=>cb(s.docs.map(x=>({id:x.id,...x.data()}))),()=>{});
     if(mode==='off')return;const f=()=>cb(dl().notifs.slice(0,40));f();addEventListener('storage',e=>{if(e.key===DK)f()});setInterval(f,8000);return f}
-  return{init,register,login,reset,logout,mine,saveMine,market,onMarket,onActive,delOffice,setMarket,messaging,saveToken,tokens,delToken,ping,devices,active,all,update,send,del,delAll,onNotifs,onUser:f=>L.push(f),get user(){return user},get mode(){return mode}}
+  return{init,register,login,reset,logout,mine,saveMine,market,onMarket,onActive,delOffice,deleteMe,setMarket,messaging,saveToken,tokens,delToken,ping,devices,active,all,update,send,del,delAll,onNotifs,onUser:f=>L.push(f),get user(){return user},get mode(){return mode}}
 })();
 
 /* ---- account card ---- */
@@ -1113,7 +1119,7 @@ function renderAcct(){const u=Cloud.user,box=$('acctBox');if(!box)return;$('acct
     (k==='pending'?'<div class="note">حسابك وصل للإدارة. بعد الدفع يتفعّل وتطلع صيرفتك للزبائن القريبين.</div>':'')+
     (!S.shop.lat?'<div class="note">ثبّت موقع المحل تحت حتى تطلع على الخريطة.</div>':'')+
     '<div class="small muted">بياناتك وأسعارك تنرفع وحدها كل ما تعتمد الأسعار. آخر رفع: '+(a.updated?ago(a.updated):'—')+'</div>'+
-    '<div class="btns"><button class="btn" onclick="syncUp(1)">رفع الآن</button><button class="btn" onclick="Cloud.logout()">خروج</button></div>'}
+    '<div class="btns"><button class="btn" onclick="syncUp(1)">رفع الآن</button><button class="btn" onclick="Cloud.logout()">خروج</button></div><button class="link" style="color:var(--neg);margin-top:10px" onclick="delMyAcct()">حذف حسابي</button>'}
 let syncT;
 async function syncUp(now){clearTimeout(syncT);const run=async()=>{const u=Cloud.user;if(!u||u.admin)return;
   try{await Cloud.saveMine({name:S.shop.name||'',phone:S.shop.phone||'',addr:S.shop.addr||'',lat:S.shop.lat||null,lng:S.shop.lng||null,logo:S.shop.logo||'',rates:pubRates(),pub:S.pub||0,updated:Date.now(),dev:S.lic.dev});
@@ -1300,6 +1306,9 @@ $('sLoc').onchange=()=>{const v=$('sLoc').value,m=v.match(/@(-?\d{1,2}\.\d+),(-?
 tg('themeTg',v=>{S.theme=v;save();applyTheme()});
 function applyTheme(){if(S.theme)document.documentElement.dataset.theme=S.theme;else delete document.documentElement.dataset.theme}
 /* Wipes local data. The device id and the first-run date stay, so the free trial doesn't restart. */
+async function delMyAcct(){if(!confirm('تحذف حسابك نهائياً؟ تنمسح معلومات صيرفتك وأسعارها واشتراكها من السيرفر، وما ترجع.'))return;
+  const pw=prompt('للتأكيد اكتب الرمز السري مالتك');if(!pw)return;
+  try{await Cloud.deleteMe(pw);doReset('all');S.acct=null;S.acctUid='';save();toast('انحذف حسابك ✓')}catch(e){toast(typeof e==='string'?e:'ما انحذف: '+(e.code||e.message))}}
 function askReset(kind){$('resetTxt').textContent=kind==='all'?'متأكد؟ راح ينمسح اسم المحل والشعار والأسعار والسجل من هذا الموبايل.':'متأكد؟ راح تنمسح كل الأسعار والسجل، ومعلومات المحل تبقى.';
   $('resetBox').hidden=false;$('resetBox').scrollIntoView({behavior:'smooth',block:'center'});$('resetGo').onclick=()=>doReset(kind)}
 function doReset(kind){if(kind==='all'){const keep={lic:S.lic,first:S.first,acctUid:S.acctUid,acct:S.acct};S=Object.assign(blank(),keep);S.ob=0}

@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && exists(/databases/$(db)/documents/admins/$(request.auth.uid)); }
+
+    // Each exchange office owns one document, keyed by its account id.
+    match /offices/{uid} {
+      allow read: if resource.data.status == 'active'
+                  || (signedIn() && request.auth.uid == uid)
+                  || isAdmin();
+      // A new office can only create itself as "pending".
+      allow create: if signedIn() && request.auth.uid == uid
+                    && request.resource.data.status == 'pending'
+                    && !request.resource.data.keys().hasAny(['expires', 'featured', 'verified']);
+      // Offices edit their own info and rates, but never their status, expiry or badges.
+      allow update: if isAdmin()
+                    || (signedIn() && request.auth.uid == uid
+                        && !request.resource.data.diff(resource.data).affectedKeys()
+                             .hasAny(['status', 'expires', 'featured', 'verified']));
+      // The admin, or the owner deleting their own account.
+      allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
+    }
+
+    // Announcements: everyone reads, only the admin writes.
+    match /notifs/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Market reference rates: everyone reads, only the admin writes.
+    match /market/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // One document per install, written by the app itself; only the admin can read them (download counts).
+    match /devices/{id} {
+      allow create, update: if request.resource.data.keys().hasOnly(['first', 'last', 'ver', 'android', 'user', 'shop', 'role'])
+                            && request.resource.data.size() <= 7;
+      allow read, delete: if isAdmin();
+    }
+
+    // Phone push tokens: a phone saves its own; only the admin reads them to send.
+    match /tokens/{id} {
+      allow create, update: if request.resource.data.keys().hasOnly(['role', 'paid', 'at'])
+                            && request.resource.data.size() <= 3;
+      allow read, delete: if isAdmin();
+    }
+
+    // Admin list is managed from the Firebase console only.
+    match /admins/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+  }
+}
