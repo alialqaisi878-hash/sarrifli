@@ -661,6 +661,10 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
 function showErr(m){try{const t=document.getElementById('toast');t.textContent='خطأ: '+String(m||'').slice(0,120);t.classList.add('on');setTimeout(()=>t.classList.remove('on'),6000)}catch(e){}}
 window.addEventListener('error',e=>showErr(e.message));window.addEventListener('unhandledrejection',e=>showErr(e.reason&&e.reason.message||e.reason));
 /* ================= Android app bridge (only inside the APK) ================= */
+/* iPhone app (WKWebView): talks to Swift through webkit.messageHandlers.ios; Swift calls window.iosPush(token). */
+const IOS=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.ios;
+function iosPost(o){try{IOS.postMessage(o)}catch(e){}}
+window.iosPush=async t=>{try{if(!t||Cloud.mode!=='fb')return;if(S.pushTok!==t||!S.pushAt||Date.now()-S.pushAt>7*864e5){await Cloud.saveToken(t,tokInfo());S.pushTok=t;S.pushAt=Date.now();save()}}catch(e){console.warn('push',e)}};
 if(window.Native){try{Object.defineProperty(navigator,'clipboard',{value:{writeText:t=>{Native.copy(String(t));return Promise.resolve()}},configurable:true})}catch(e){}}
 window.onNativeBack=function(){if($('board').classList.contains('on')){closeBoard();return 1}
   if(document.querySelector('.sheet.on')){closeSheets();return 1}const v=document.querySelector('.view.on'),hm=isCust()?'cust':(Cloud.user&&Cloud.user.admin)?'admin':'home';if(v&&v.id!=='v-'+hm){go(hm);return 1}return 0};
@@ -915,8 +919,8 @@ function renderBoard(flash){const R=pubRates(),P=S.prev||{};
   lastBoard=JSON.parse(JSON.stringify(R));$('bWm').hidden=licState().ok}
 function tick(){const d=new Date();$('bClock').innerHTML=d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+'<small>'+d.toLocaleDateString('ar-IQ',{weekday:'long',day:'numeric',month:'long'})+'</small>'}
 let wake;
-async function openBoard(){if(window.Native)Native.board(true);renderBoard();tick();$('board').classList.add('on');try{await document.documentElement.requestFullscreen()}catch(e){}try{wake=await navigator.wakeLock.request('screen')}catch(e){}}
-function closeBoard(){if(window.Native)Native.board(false);$('board').classList.remove('on');try{document.fullscreenElement&&document.exitFullscreen()}catch(e){}try{wake&&wake.release()}catch(e){}}
+async function openBoard(){if(window.Native)Native.board(true);if(IOS)iosPost({a:"board",on:1});renderBoard();tick();$('board').classList.add('on');try{await document.documentElement.requestFullscreen()}catch(e){}try{wake=await navigator.wakeLock.request('screen')}catch(e){}}
+function closeBoard(){if(window.Native)Native.board(false);if(IOS)iosPost({a:"board",on:0});$('board').classList.remove('on');try{document.fullscreenElement&&document.exitFullscreen()}catch(e){}try{wake&&wake.release()}catch(e){}}
 setInterval(()=>{if($('board').classList.contains('on'))tick()},10000);
 addEventListener('keydown',e=>{if(e.key==='Escape'){closeBoard();closeSheets()}});
 
@@ -954,9 +958,9 @@ async function drawShot(){await loadLogo();try{await Promise.all([document.fonts
   x.fillStyle=t.mut;x.font=B(500,24);x.fillText('الأسعار قابلة للتغيير · صرفلي',W/2,fy+52);
   if(!licState().ok){x.save();x.translate(W/2,H/2);x.rotate(-.35);x.textAlign='center';x.fillStyle='rgba(210,169,87,.3)';x.font=D(700,118);x.fillText('نسخة غير مفعّلة',0,0);x.restore()}}
 function blobOf(){return new Promise(r=>$('shot').toBlob(r,'image/png'))}
-async function shareImg(){if(window.Native){await drawShot();Native.shareImage($('shot').toDataURL('image/png'));return}await drawShot();const b=await blobOf();const f=new File([b],'asaar.png',{type:'image/png'});
+async function shareImg(){if(IOS){await drawShot();iosPost({a:'share',d:$('shot').toDataURL('image/png')});return}if(window.Native){await drawShot();Native.shareImage($('shot').toDataURL('image/png'));return}await drawShot();const b=await blobOf();const f=new File([b],'asaar.png',{type:'image/png'});
   if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:'أسعار اليوم'})}catch(e){}}else saveImg()}
-async function saveImg(){if(window.Native){await drawShot();toast(Native.saveImage($('shot').toDataURL('image/png'))?'انحفظت الصورة بالمعرض ✓':'ما كدرنا نحفظ الصورة');return}await drawShot();const b=await blobOf();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='اسعار-'+new Date().toISOString().slice(0,10)+'.png';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000)}
+async function saveImg(){if(IOS){await drawShot();iosPost({a:'share',d:$('shot').toDataURL('image/png')});return}if(window.Native){await drawShot();toast(Native.saveImage($('shot').toDataURL('image/png'))?'انحفظت الصورة بالمعرض ✓':'ما كدرنا نحفظ الصورة');return}await drawShot();const b=await blobOf();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='اسعار-'+new Date().toISOString().slice(0,10)+'.png';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000)}
 function mapUrl(){return'https://maps.google.com/?q='+S.shop.lat+','+S.shop.lng}
 function copyText(){const R=pubRates();const lines=[(S.img.occ?S.img.occ+'\n':'')+(S.shop.name||'أسعار الصرف')+' · '+new Date().toLocaleDateString('ar-IQ')];
   for(const c of curs())if(R[c.code])lines.push(c.flag+' '+c.name+' ('+perLbl(c)+')\nشراء: '+fmt(R[c.code][0])+' | بيع: '+fmt(R[c.code][1]));
@@ -1018,7 +1022,7 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
 const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
-const APP_VER='3.1';
+const APP_VER='3.2';
 /* Online copy: ask the server which version is current; if it is newer, clear the offline cache and reload once. */
 async function checkUpdate(){if(!/^https?:/.test(location.protocol))return;try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.json()).v;
   if(v&&v!==APP_VER&&sessionStorage.getItem('upd')!==v){sessionStorage.setItem('upd',v);try{const k=await caches.keys();await Promise.all(k.map(x=>caches.delete(x)))}catch(e){}location.reload()}}catch(e){}}
@@ -1156,14 +1160,14 @@ async function sysNotify(n){if(window.Native&&Native.notice){Native.notice(n.tit
 const VAPID='BLthBVXwWF_xusDbPdvTv4oqj_FevSILUKceyAmfa9YPTspDqVmNa9z-gaplEZB9GmsBo00yETIxWhCJC8Fw_ik';
 const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
-function pushState(){if(window.Native||Cloud.mode!=='fb'||!VAPID)return'none';if(isIOS&&!standalone)return'home';if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))return'none';
+function pushState(){if(window.Native||IOS||Cloud.mode!=='fb'||!VAPID)return'none';if(isIOS&&!standalone)return'home';if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))return'none';
   return Notification.permission==='granted'?(S.pushTok?'on':'ask'):Notification.permission==='denied'?'denied':'ask'}
 function tokInfo(){const u=Cloud.user;return{role:isCust()?'cust':u?(u.admin?'admin':'shop'):'guest',paid:!isCust()&&(!!paidUntil()||(licState().ok&&!licState().trial)),at:Date.now()}}
 /* Android app: Firebase gives the token natively; it can take a few seconds the first time. */
 async function nativePush(){if(!window.Native||!Native.fcm||Cloud.mode!=='fb')return'none';let t='';try{t=Native.fcm()}catch(e){}
   if(!t){setTimeout(()=>{try{const t2=Native.fcm();if(t2)nativePush()}catch(e){}},6000);return'wait'}
   if(S.pushTok!==t||!S.pushAt||Date.now()-S.pushAt>7*864e5){try{await Cloud.saveToken(t,tokInfo());S.pushTok=t;S.pushAt=Date.now();save()}catch(e){console.warn('push',e);return'err'}}return'on'}
-async function pushSetup(ask){if(window.Native)return nativePush();const st=pushState();if(st==='none'||st==='home'||st==='denied')return st;
+async function pushSetup(ask){if(window.Native)return nativePush();if(IOS){iosPost({a:'push'});return'none'}const st=pushState();if(st==='none'||st==='home'||st==='denied')return st;
   try{if(Notification.permission!=='granted'){if(!ask)return'ask';if(await Notification.requestPermission()!=='granted')return'denied'}
     const reg=await navigator.serviceWorker.ready,m=await Cloud.messaging(),t=await m.getToken({vapidKey:VAPID,serviceWorkerRegistration:reg});if(!t)return'ask';
     await Cloud.saveToken(t,tokInfo());S.pushTok=t;S.pushErr='';save();return'on'}catch(e){console.warn('push',e);S.pushErr=String(e&&(e.code||e.message)||e).slice(0,120);save();return'err'}}
@@ -1191,7 +1195,7 @@ async function pushAll(n){const sa=getSA();if(!sa||Cloud.mode!=='fb')return null
   const want=t=>n.target==='cust'?t.role==='cust':n.target==='paid'?!!t.paid:n.target==='free'?(!t.paid&&t.role!=='cust'):true;
   const url='https://fcm.googleapis.com/v1/projects/'+(sa.project_id||FB_CONFIG.projectId)+'/messages:send';let ok=0;const list=L.filter(want);
   for(let i=0;i<list.length;i+=20)await Promise.all(list.slice(i,i+20).map(async t=>{try{const r=await fetch(url,{method:'POST',headers:{Authorization:'Bearer '+at,'Content-Type':'application/json'},
-    body:JSON.stringify({message:{token:t.id,data:{title:String(n.title||'صرفلي'),body:String(n.body||''),at:String(n.at||Date.now())},android:{priority:'HIGH'},webpush:{headers:{Urgency:'high',TTL:'86400'}}}})});
+    body:JSON.stringify({message:{token:t.id,data:{title:String(n.title||'صرفلي'),body:String(n.body||''),at:String(n.at||Date.now())},android:{priority:'HIGH'},apns:{headers:{'apns-priority':'10'},payload:{aps:{alert:{title:String(n.title||'صرفلي'),body:String(n.body||'')},sound:'default'}}},webpush:{headers:{Urgency:'high',TTL:'86400'}}}})});
     if(r.ok)ok++;else if(r.status===404||r.status===400)Cloud.delToken(t.id)}catch(e){}}));return{ok,all:list.length}}
 async function notifyAll(n){n={...n,at:Date.now()};await Cloud.send(n);let p=null;try{p=await pushAll(n)}catch(e){console.warn(e);p={err:String(e&&(e.code||e.message)||e).slice(0,120)}}return p}
 function pushMsg(p){return !p?'':p.err?'الإشعار ما وصل للموبايلات: '+p.err:'وصل الإشعار لـ '+p.ok+' من '+p.all+' موبايل'}

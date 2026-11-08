@@ -1,0 +1,29 @@
+# Checks that the iPhone app builds (simulator, no signing). Signing and App Store upload get added once the Apple account exists.
+name: ios
+on:
+  push:
+    branches: [main]
+    paths: ['ios/**', 'index.html', '.github/workflows/ios.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: python3 android/make-www.py ios/www
+      - run: cd ios && xcodegen generate
+      - run: |
+          cd ios && set -o pipefail && xcodebuild -project Sarrifli.xcodeproj -scheme Sarrifli -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee ../ios-build.log | tail -40
+      - if: always()
+        run: |
+          mkdir -p out && cp ios-build.log out/ 2>/dev/null || true
+          grep -E "error:|BUILD (SUCCEEDED|FAILED)|\*\* " ios-build.log > out/summary.txt 2>/dev/null || true
+          echo "${GITHUB_SHA}" > out/commit.txt
+          cd out && git init -q && git checkout -q -b builds-ios && git add -A
+          git -c user.name=build -c user.email=build@users.noreply.github.com commit -qm "ios build ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" builds-ios
