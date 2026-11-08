@@ -1018,7 +1018,7 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
 const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
-const APP_VER='2.9';
+const APP_VER='3.0';
 /* Online copy: ask the server which version is current; if it is newer, clear the offline cache and reload once. */
 async function checkUpdate(){if(!/^https?:/.test(location.protocol))return;try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.json()).v;
   if(v&&v!==APP_VER&&sessionStorage.getItem('upd')!==v){sessionStorage.setItem('upd',v);try{const k=await caches.keys();await Promise.all(k.map(x=>caches.delete(x)))}catch(e){}location.reload()}}catch(e){}}
@@ -1061,6 +1061,7 @@ const Cloud=(()=>{
   async function active(){if(mode==='fb'){const q=await db.collection('offices').where('status','==','active').get();return q.docs.map(x=>({id:x.id,...x.data()}))}
     if(mode==='off')return[];return Object.entries(dl().offices).filter(([,v])=>v.status==='active').map(([k,v])=>({id:k,...v}))}
   async function all(){if(mode==='fb'){const q=await db.collection('offices').get();return q.docs.map(x=>({id:x.id,...x.data()}))}return Object.entries(dl().offices).map(([k,v])=>({id:k,...v}))}
+  async function delOffice(id){if(mode==='fb'){await db.doc('offices/'+id).delete();return}const d=dl();delete d.offices[id];ds(d)}
   async function update(id,patch){if(mode==='fb'){await db.doc('offices/'+id).update(patch);return}const d=dl();d.offices[id]={...d.offices[id],...patch};ds(d)}
   async function send(n){n={...n,at:n.at||Date.now(),by:user&&user.email||''};if(mode==='fb'){await db.collection('notifs').add(n);return}const d=dl();d.notifs.unshift({id:'n'+Date.now(),...n});ds(d);try{bc&&bc.postMessage('notif')}catch(e){}}
   async function del(id){if(mode==='fb'){await db.doc('notifs/'+id).delete();return}const d=dl();d.notifs=d.notifs.filter(x=>x.id!==id);ds(d)}
@@ -1080,7 +1081,7 @@ const Cloud=(()=>{
   async function devices(){if(mode==='fb'){const q=await db.collection('devices').get();return q.docs.map(x=>({id:x.id,...x.data()}))}return Object.entries(dl().devices||{}).map(([k,v])=>({id:k,...v}))}
   function onNotifs(cb){if(mode==='fb')return db.collection('notifs').orderBy('at','desc').limit(40).onSnapshot(s=>cb(s.docs.map(x=>({id:x.id,...x.data()}))),()=>{});
     if(mode==='off')return;const f=()=>cb(dl().notifs.slice(0,40));f();addEventListener('storage',e=>{if(e.key===DK)f()});setInterval(f,8000);return f}
-  return{init,register,login,reset,logout,mine,saveMine,market,onMarket,onActive,setMarket,messaging,saveToken,tokens,delToken,ping,devices,active,all,update,send,del,delAll,onNotifs,onUser:f=>L.push(f),get user(){return user},get mode(){return mode}}
+  return{init,register,login,reset,logout,mine,saveMine,market,onMarket,onActive,delOffice,setMarket,messaging,saveToken,tokens,delToken,ping,devices,active,all,update,send,del,delAll,onNotifs,onUser:f=>L.push(f),get user(){return user},get mode(){return mode}}
 })();
 
 /* ---- account card ---- */
@@ -1218,11 +1219,13 @@ function admRender(){const now=Date.now();const L=admOffices.filter(o=>admF==='a
     '<div class="meta"><span class="num">'+esc(showId(o.email))+'</span><br>'+esc([o.phone,o.addr].filter(Boolean).join(' · ')||'—')+'<br>سعر الدولار: <span class="num">'+(o.rates&&o.rates.USD?fmt(o.rates.USD[0])+' / '+fmt(o.rates.USD[1]):'—')+'</span> · آخر تحديث '+(o.updated?ago(o.updated):'—')+(o.lat?' · 📍 الموقع مثبت':' · بدون موقع')+'</div>'+
     '<div class="tools"><button data-a="m1">+ شهر</button><button data-a="m3">+ 3 أشهر</button><button data-a="m12">+ سنة</button>'+
     '<button data-a="feat" class="'+(o.featured?'on':'')+'">مميزة</button><button data-a="ver" class="'+(o.verified?'on':'')+'">موثّقة</button>'+
-    (o.status==='off'?'<button data-a="on">إعادة تفعيل</button>':'<button data-a="off">إيقاف</button>')+'<button data-a="rates">✎ تعديل أسعاره</button></div></div>'}).join('')||'<div class="card muted small">ماكو صيرفات بهذا القسم.</div>';
+    (o.status==='off'?'<button data-a="on">إعادة تفعيل</button>':'<button data-a="off">إيقاف</button>')+'<button data-a="rates">✎ تعديل أسعاره</button><button data-a="del" style="color:var(--neg)">🗑 حذف الصيرفة</button></div></div>'}).join('')||'<div class="card muted small">ماكو صيرفات بهذا القسم.</div>';
   $('admOffices').querySelectorAll('.adm-of').forEach((el,i)=>{const o=L[i];el.querySelectorAll('button[data-a]').forEach(b=>b.onclick=async()=>{const a=b.dataset.a;let p={};
     if(a[0]==='m'){const base=Math.max(Date.now(),o.expires||0),d=new Date(base);d.setMonth(d.getMonth()+ +a.slice(1));p={status:'active',expires:d.getTime()}}
     if(a==='rates'){openEdit('USD',{rates:o.rates||{},title:'أسعار: '+(o.name||o.email||'صيرفة'),sub:'تعدّل أسعار هذي الصيرفة وتطلع عند الزبائن فوراً',btn:'حفظ أسعاره',done:'تم تحديث أسعار الصيرفة ✓',
       save:async r=>{await Cloud.update(o.id,{rates:r,pub:Date.now(),updated:Date.now()});o.rates=r;admRender()}});return}
+    if(a==='del'){if(!confirm('تحذف «'+(o.name||showId(o.email)||'الصيرفة')+'» كاملة؟ تنشال أسعارها ومعلوماتها واشتراكها، وما تطلع للزباين. ما ترجع.'))return;
+      try{await Cloud.delOffice(o.id);admOffices=admOffices.filter(x=>x.id!==o.id);admRender();toast('انحذفت الصيرفة ✓')}catch(e){toast('ما انحذفت: '+(e.code||e.message))}return}
     if(a==='feat')p={featured:!o.featured};if(a==='ver')p={verified:!o.verified};if(a==='off')p={status:'off'};if(a==='on')p={status:'active'};
     try{await Cloud.update(o.id,p);Object.assign(o,p);buzz();toast('تم ✓');admLoad()}catch(e){toast('ما انحفظ التغيير')}})})}
 function admMarketTxt(){const m=S.market;$('admMarket').innerHTML=m&&m.rates?curs().filter(c=>m.rates[c.code]).map(c=>c.flag+' '+c.name.split(' ')[0]+': <b class="num">'+fmt(m.rates[c.code][0])+' / '+fmt(m.rates[c.code][1])+'</b>').join('<br>')+'<br><span>آخر تحديث '+ago(m.at)+'</span>':'ما محدد سعر سوق بعد.'}
