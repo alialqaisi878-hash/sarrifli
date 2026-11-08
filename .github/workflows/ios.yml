@@ -10,15 +10,18 @@ permissions:
 jobs:
   build:
     runs-on: macos-14
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
+      - run: echo started > started.txt
       - run: brew install xcodegen
       - run: python3 android/make-www.py ios/www
       - run: cd ios && xcodegen generate
-      - run: |
+      - timeout-minutes: 45
+        run: |
           cd ios && set -o pipefail && xcodebuild -project Sarrifli.xcodeproj -scheme Sarrifli -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee ../ios-build.log | tail -40
+            -skipPackagePluginValidation -skipMacroValidation CODE_SIGNING_ALLOWED=NO build 2>&1 | tee ../ios-build.log | tail -40
       - if: always()
         run: |
           mkdir -p out && cp ios-build.log out/ 2>/dev/null || true
