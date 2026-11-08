@@ -969,7 +969,10 @@ const AREAS=[['الكرادة',33.3046,44.4130],['المنصور',33.3140,44.346
  ['الأعظمية',33.3700,44.3800],['الكاظمية',33.3800,44.3400],['اليرموك',33.3000,44.3350],['بغداد الجديدة',33.3150,44.4800],['الدورة',33.2560,44.4000]];
 const MIN=60000,T0=Date.now();
 let here=null,nearSort='near',CLOUD_OF=null;
-async function loadCloudOffices(){try{const L=await Cloud.active(),me=Cloud.user&&Cloud.user.uid;CLOUD_OF=L.filter(o=>o.id!==me&&o.lat&&o.rates&&o.rates.USD&&(!o.expires||o.expires>Date.now())).map(o=>({n:o.name||'صيرفة',a:o.addr||'',la:o.lat,ln:o.lng,b:o.rates.USD[0],s:o.rates.USD[1],t:o.pub||o.updated,ph:o.phone||'',f:!!o.featured,v:!!o.verified}))}catch(e){CLOUD_OF=null}
+async function loadCloudOffices(){try{setCloudOffices(await Cloud.active())}catch(e){CLOUD_OF=null}}
+/* Live: a shop's new prices show on customers' screens the moment it publishes. */
+let offLive=null;function liveOffices(){if(offLive||Cloud.mode!=='fb')return;offLive=Cloud.onActive(L=>{try{setCloudOffices(L)}catch(e){}})}
+function setCloudOffices(L){const me=Cloud.user&&Cloud.user.uid;CLOUD_OF=L.filter(o=>o.id!==me&&o.lat&&o.rates&&o.rates.USD&&(!o.expires||o.expires>Date.now())).map(o=>({n:o.name||'صيرفة',a:o.addr||'',la:o.lat,ln:o.lng,b:o.rates.USD[0],s:o.rates.USD[1],t:o.pub||o.updated,ph:o.phone||'',f:!!o.featured,v:!!o.verified}))
   $('nearNote').hidden=!!(CLOUD_OF&&CLOUD_OF.length);if($('v-near').classList.contains('on'))renderNear();if($('v-cust').classList.contains('on'))renderCust()}
 function km(a,b,c,d){const R=6371,r=Math.PI/180,x=Math.sin((c-a)*r/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin((d-b)*r/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
 const dist=k=>k<1?Math.round(k*1000)+' م':k.toFixed(1)+' كم';
@@ -1015,7 +1018,7 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
 const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
-const APP_VER='2.8';
+const APP_VER='2.9';
 /* Online copy: ask the server which version is current; if it is newer, clear the offline cache and reload once. */
 async function checkUpdate(){if(!/^https?:/.test(location.protocol))return;try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.json()).v;
   if(v&&v!==APP_VER&&sessionStorage.getItem('upd')!==v){sessionStorage.setItem('upd',v);try{const k=await caches.keys();await Promise.all(k.map(x=>caches.delete(x)))}catch(e){}location.reload()}}catch(e){}}
@@ -1054,6 +1057,7 @@ const Cloud=(()=>{
   async function mine(){if(!user||user.admin&&mode==='demo')return null;if(mode==='fb'){const s=await db.doc('offices/'+user.uid).get();return s.exists?s.data():null}return dl().offices[user.uid]||null}
   async function saveMine(data){if(!user||user.admin&&mode==='demo')return;if(mode==='fb'){await db.doc('offices/'+user.uid).set(data,{merge:true});return}
     const d=dl();d.offices[user.uid]={...(d.offices[user.uid]||{}),...data};ds(d)}
+  function onActive(cb){if(mode!=='fb')return null;return db.collection('offices').where('status','==','active').onSnapshot(s=>cb(s.docs.map(x=>({id:x.id,...x.data()}))),()=>{})}
   async function active(){if(mode==='fb'){const q=await db.collection('offices').where('status','==','active').get();return q.docs.map(x=>({id:x.id,...x.data()}))}
     if(mode==='off')return[];return Object.entries(dl().offices).filter(([,v])=>v.status==='active').map(([k,v])=>({id:k,...v}))}
   async function all(){if(mode==='fb'){const q=await db.collection('offices').get();return q.docs.map(x=>({id:x.id,...x.data()}))}return Object.entries(dl().offices).map(([k,v])=>({id:k,...v}))}
@@ -1076,7 +1080,7 @@ const Cloud=(()=>{
   async function devices(){if(mode==='fb'){const q=await db.collection('devices').get();return q.docs.map(x=>({id:x.id,...x.data()}))}return Object.entries(dl().devices||{}).map(([k,v])=>({id:k,...v}))}
   function onNotifs(cb){if(mode==='fb')return db.collection('notifs').orderBy('at','desc').limit(40).onSnapshot(s=>cb(s.docs.map(x=>({id:x.id,...x.data()}))),()=>{});
     if(mode==='off')return;const f=()=>cb(dl().notifs.slice(0,40));f();addEventListener('storage',e=>{if(e.key===DK)f()});setInterval(f,8000);return f}
-  return{init,register,login,reset,logout,mine,saveMine,market,onMarket,setMarket,messaging,saveToken,tokens,delToken,ping,devices,active,all,update,send,del,delAll,onNotifs,onUser:f=>L.push(f),get user(){return user},get mode(){return mode}}
+  return{init,register,login,reset,logout,mine,saveMine,market,onMarket,onActive,setMarket,messaging,saveToken,tokens,delToken,ping,devices,active,all,update,send,del,delAll,onNotifs,onUser:f=>L.push(f),get user(){return user},get mode(){return mode}}
 })();
 
 /* ---- account card ---- */
@@ -1350,7 +1354,7 @@ function renderCust(){if(!$('cMkt'))return;const m=S.market,R=(m&&m.rates)||{},L
   $('cGlobal').innerHTML=$('gList').innerHTML}
 function renderAll(){applyRole();applyTheme();renderHeader();renderAcct();renderHome();renderSet();renderConv();renderGlobal();
   if($('v-share').classList.contains('on'))drawShot();if($('v-near').classList.contains('on'))renderNear()}
-try{renderAll()}catch(e){console.error(e);showErr(e&&e.message)}Cloud.init().then(()=>{keepNative();setTimeout(()=>pushSetup(false).then(pushBox),2500);devPing();startNotifs();nativeSync();loadMarket();setInterval(loadMarket,6e5);Cloud.onMarket(m=>{if(!m)return;S.market=m;save();renderMarket();if($('admMarket'))admMarketTxt()});renderSetup();if(location.hash==='#admin')go('admin')});loadGlobal();setInterval(()=>loadGlobal(),36e5);
+try{renderAll()}catch(e){console.error(e);showErr(e&&e.message)}Cloud.init().then(()=>{keepNative();setTimeout(()=>pushSetup(false).then(pushBox),2500);devPing();startNotifs();nativeSync();loadMarket();setInterval(loadMarket,6e5);liveOffices();Cloud.onMarket(m=>{if(!m)return;S.market=m;save();renderMarket();if($('admMarket'))admMarketTxt()});renderSetup();if(location.hash==='#admin')go('admin')});loadGlobal();setInterval(()=>loadGlobal(),36e5);
 setInterval(()=>{tickClock();const [cls,txt]=pubState(),ps=$('pubStatus');ps.className='status '+cls;ps.textContent=txt},30000);
 let rsT;addEventListener('resize',()=>{clearTimeout(rsT);rsT=setTimeout(()=>{drawSpark();if($('v-near').classList.contains('on'))renderNear()},150)});
 if(S.ob==null)S.ob=1;
