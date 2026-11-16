@@ -103,6 +103,15 @@ main{max-width:720px;margin:0 auto;padding:0 max(16px,env(safe-area-inset-right)
 .usd canvas{width:100%;height:52px;display:block;margin-top:12px}
 .mkt{display:flex;align-items:baseline;gap:6px;margin-top:10px;padding:8px 12px;border-radius:12px;background:var(--sunk);font-size:13px}
 .mkt .mk-l{color:var(--muted);font-weight:600;margin-inline-end:auto}.mkt b{font-family:var(--f-display);font-weight:600}.mkt b.s{color:var(--brass-ink)}.mkt .mk-s,.mkt .mk-t{color:var(--faint);font-size:11.5px}
+.mkt{cursor:pointer}.mkt .mk-c{font-size:11.5px;font-weight:600;direction:ltr}.mk-c.up,.trend .up{color:var(--pos)}.mk-c.down,.trend .down{color:var(--neg)}
+.trend{padding:14px;cursor:pointer}.trend .t-h{display:flex;align-items:baseline;gap:8px}.trend .t-h b{font-family:var(--f-display);font-weight:600;font-size:22px;direction:ltr}
+.trend .t-h .t-c{font-size:13px;font-weight:600;direction:ltr}.trend .t-h .t-l{margin-inline-end:auto;color:var(--muted);font-size:13px;font-weight:600}
+.trend canvas{width:100%;height:64px;display:block;margin:8px 0}
+.trend .t-s{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center;font-size:11.5px;color:var(--muted)}.trend .t-s b{display:block;font-family:var(--f-display);font-size:14.5px;color:var(--ink);direction:ltr}
+#mkTrend{background:var(--sunk);border-radius:16px;cursor:default}
+.qa3{display:flex;gap:8px;margin-top:10px}.qa3 .btn{flex:1}
+.al{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--sunk);font-size:13.5px}.al b{font-family:var(--f-display);direction:ltr}.al .x{margin-inline-start:auto}
+.al.off{opacity:.55}
 .usd .foot{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:4px}
 
 /* quick actions */
@@ -403,7 +412,7 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
       <div class="sell"><div class="lbl">نبيع للزبون</div><div class="big" id="hSell">—</div><span class="chg eq" id="hSellD">—</span></div>
     </div>
     <canvas id="spark"></canvas>
-    <div class="mkt" id="mktRow" hidden></div>
+    <div class="mkt" id="mktRow" hidden role="button" tabindex="0" aria-label="حركة سعر السوق والتنبيهات" onclick="event.stopPropagation();openMkt()"></div>
     <div class="foot"><span id="sparkLbl">حركة سعر البيع</span><button class="link" onclick="event.stopPropagation();openHist()">السجل كامل ←</button></div>
   </div>
 
@@ -452,6 +461,8 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
   </div>
   <div class="sec"><h3>سعر السوق</h3><span class="aux" id="cMktT"></span></div>
   <div class="card rl" id="cMkt"></div>
+  <div class="card trend" id="cTrend" role="button" tabindex="0" onclick="openMkt()" aria-label="حركة السعر اليوم" hidden></div>
+  <div class="qa3"><button class="btn" onclick="openMkt('alert')">🔔 نبهني بالسعر</button><button class="btn" onclick="shareMkt()">📤 شارك السعر</button></div>
   <div class="sec"><h3>أرخص دولار حولك</h3><button class="link" onclick="go('near')">كل الصيرفات ←</button></div>
   <div class="stack" id="cOffices"></div>
   <div class="sec"><h3>البورصة العالمية</h3></div>
@@ -621,6 +632,18 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
   <div class="ed-info" id="edInfo"></div>
   <div class="btns" style="margin-top:16px"><button class="btn primary lg" id="edSave" onclick="edSave()">حفظ ونشر</button><button class="btn lg" id="edNext" style="flex:0 0 auto" onclick="edNext()">التالي ←</button></div>
   <div class="edit-hint">بعد النشر تتحدث شاشة المحل والصورة وصفحة القريبة وحدها</div>
+</div>
+
+<div class="sheet" id="mktSheet" role="dialog" aria-label="سعر السوق"><div class="grab"></div>
+  <div class="row" style="margin-bottom:8px"><div style="flex:1"><h3>سعر السوق</h3><div class="small muted" id="mkSub"></div></div><button class="ibtn" style="color:var(--ink);border-color:var(--line);background:var(--sunk)" onclick="closeSheets()" aria-label="إغلاق">✕</button></div>
+  <div class="ed-cur" id="mkCur"></div>
+  <div id="mkTrend" class="trend" style="margin-top:10px"></div>
+  <div class="btns" style="margin-top:12px"><button class="btn primary" onclick="shareMkt()">📤 شارك السعر بالواتساب</button><button class="btn" style="flex:0 0 auto" onclick="copyMkt()">نسخ</button></div>
+  <div class="sec" id="mkAlertSec"><h3>🔔 نبهني من يوصل السعر</h3></div>
+  <div class="small muted" style="margin-bottom:8px">يجيك إشعار من سعر البيع بالسوق يعبر الرقم اللي تحدده</div>
+  <div class="seg" id="alOp"><button data-v="up" class="on">يصعد إلى</button><button data-v="down">ينزل إلى</button></div>
+  <div class="row" style="margin-top:8px"><input class="in num" id="alV" inputmode="decimal" placeholder="مثلاً 150,000" style="flex:1;text-align:right" oninput="fmtTyping(this)"><button class="btn primary" style="flex:none" onclick="addAlert()">أضف التنبيه</button></div>
+  <div id="alList" class="stack" style="margin-top:10px"></div>
 </div>
 
 <div class="sheet" id="notifSheet" role="dialog" aria-label="الإشعارات"><div class="grab"></div>
@@ -1022,7 +1045,7 @@ function fillCurSel(id){const s=$(id),v=s.value;s.innerHTML=curs().map(c=>'<opti
    Paste the Firebase web config below to go live. While it is null the app runs a local demo
    (data stays on this device) so every screen can be tried. Demo admin: admin / see ADMIN_DEMO */
 const FB_CONFIG={apiKey:"AIzaSyDfuIL1VTuFLnVxCpSozV8zip6NPVt7gRw",authDomain:"sarrifli-a37aa.firebaseapp.com",projectId:"sarrifli-a37aa",storageBucket:"sarrifli-a37aa.firebasestorage.app",messagingSenderId:"452057270832",appId:"1:452057270832:web:e5cb5c78c90234edc93bf5"};
-const APP_VER='3.2';
+const APP_VER='3.3';
 /* Online copy: ask the server which version is current; if it is newer, clear the offline cache and reload once. */
 async function checkUpdate(){if(!/^https?:/.test(location.protocol))return;try{const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;const v=(await r.json()).v;
   if(v&&v!==APP_VER&&sessionStorage.getItem('upd')!==v){sessionStorage.setItem('upd',v);try{const k=await caches.keys();await Promise.all(k.map(x=>caches.delete(x)))}catch(e){}location.reload()}}catch(e){}}
@@ -1085,7 +1108,7 @@ const Cloud=(()=>{
   async function saveToken(t,info){if(mode==='fb')await db.doc('tokens/'+t).set(info)}
   async function tokens(){if(mode!=='fb')return[];const q=await db.collection('tokens').get();return q.docs.map(x=>({id:x.id,...x.data()}))}
   async function delToken(t){try{if(mode==='fb')await db.doc('tokens/'+t).delete()}catch(e){}}
-  async function setMarket(r){const m={rates:r,at:Date.now(),by:user&&user.email||''};if(mode==='fb'){await db.doc('market/today').set(m);return}const d=dl();d.market=m;ds(d)}
+  async function setMarket(r,h){const m={rates:r,at:Date.now(),by:user&&user.email||'',h:h||[]};if(mode==='fb'){await db.doc('market/today').set(m);return}const d=dl();d.market=m;ds(d)}
   /* Each install reports itself once per launch, so the admin can count downloads and active devices. */
   async function ping(id,info){try{if(mode==='fb'){await db.doc('devices/'+id).set(info,{merge:true});return}if(mode==='off')return;const d=dl();d.devices=d.devices||{};d.devices[id]={...(d.devices[id]||{}),...info};ds(d)}catch(e){}}
   async function devices(){if(mode==='fb'){const q=await db.collection('devices').get();return q.docs.map(x=>({id:x.id,...x.data()}))}return Object.entries(dl().devices||{}).map(([k,v])=>({id:k,...v}))}
@@ -1240,14 +1263,68 @@ function admRender(){const now=Date.now();const L=admOffices.filter(o=>admF==='a
     try{await Cloud.update(o.id,p);Object.assign(o,p);buzz();toast('تم ✓');admLoad()}catch(e){toast('ما انحفظ التغيير')}})})}
 function admMarketTxt(){const m=S.market;$('admMarket').innerHTML=m&&m.rates?curs().filter(c=>m.rates[c.code]).map(c=>c.flag+' '+c.name.split(' ')[0]+': <b class="num">'+fmt(m.rates[c.code][0])+' / '+fmt(m.rates[c.code][1])+'</b>').join('<br>')+'<br><span>آخر تحديث '+ago(m.at)+'</span>':'ما محدد سعر سوق بعد.'}
 function admEditMarket(){if(!guardAdmin())return;openEdit('USD',{rates:(S.market&&S.market.rates)||{},title:'سعر السوق',sub:'السعر اللي يطلع لكل الصيرفات كمرجع بالرئيسية',btn:'نشر سعر السوق',done:'تم نشر سعر السوق ✓',
-  save:async r=>{const old=(S.market&&S.market.rates)||{};await Cloud.setMarket(r);S.market={rates:r,at:Date.now()};save();admMarketTxt();renderMarket();
+  save:async r=>{const old=(S.market&&S.market.rates)||{},h=mktHistNext(S.market);await Cloud.setMarket(r,h);S.market={rates:r,at:Date.now(),h};save();admMarketTxt();renderMarket();
     /* Every market-rate change also goes out as a notice to everyone, listing the currencies that moved. */
     const ch=CURS.filter(c=>r[c.code]&&String(r[c.code])!==String(old[c.code]||''));if(!ch.length)return;
     const body=ch.map(c=>{const v=r[c.code],o=old[c.code],arr=o&&o[1]!=null&&v[1]!=null&&v[1]!==o[1]?(v[1]>o[1]?' ▲':' ▼'):'';return c.flag+' '+shortNm(c)+' ('+perShort(c)+'): شراء '+fmt(v[0])+' · بيع '+fmt(v[1])+arr}).join('\n');
     try{const p=await notifyAll({title:'تحديث سعر الصرف',body,target:'all'});toast(p?pushMsg(p):'تم تحديث السعر ✓ (ملف المفتاح مو مرفوع، الإشعار داخل التطبيق بس)');setTimeout(admNotifs,600)}catch(e){toast('السعر انحفظ بس الإشعار ما انرسل')}}})}
-async function loadMarket(){try{const m=await Cloud.market();if(m){S.market=m;save()}}catch(e){}renderMarket();if($('admMarket'))admMarketTxt()}
+/* ---- market movement, price alerts and text sharing ----
+   The market doc keeps a short history (h) of earlier rates, so everyone can see the change, today's high/low and a chart. */
+function mktHistNext(prev){const h=((prev&&prev.h)||[]).slice();if(prev&&prev.rates&&prev.at)h.push({at:prev.at,r:prev.rates});
+  const since=Date.now()-3*864e5;return h.filter(e=>e.at>since).slice(-60)}
+function mktSeries(code){const m=S.market;if(!m||!m.rates)return[];return[...(m.h||[]),{at:m.at,r:m.rates}].filter(e=>e.r&&e.r[code]&&e.r[code][1]!=null).map(e=>({t:e.at,b:e.r[code][0],s:e.r[code][1]}))}
+function mktChg(code){const L=mktSeries(code);if(L.length<2)return 0;return L[L.length-1].s-L[L.length-2].s}
+function chgSmall(d){return d?'<small class="'+(d>0?'up':'down')+'">'+(d>0?'▲ ':'▼ ')+fmt(Math.abs(d))+'</small>':''}
+function mktDay(code){const L=mktSeries(code);if(!L.length)return null;const t0=new Date();t0.setHours(0,0,0,0);
+  const before=L.filter(p=>p.t<t0),today=L.filter(p=>p.t>=t0),pts=(before.length?[before[before.length-1]]:[]).concat(today);const use=pts.length?pts:L.slice(-1);
+  const v=use.map(p=>p.s);return{open:use[0].s,hi:Math.max(...v),lo:Math.min(...v),now:L[L.length-1].s,pts:use.length>1?use:L.slice(-12),n:today.length}}
+function drawLine(cv,pts){if(!cv||!cv.offsetParent)return;const dpr=devicePixelRatio||1,W=cv.clientWidth||300,H=64;cv.width=W*dpr;cv.height=H*dpr;const x=cv.getContext('2d');x.scale(dpr,dpr);
+  const brass='#D2A957';if(pts.length<2){x.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--line').trim()||'#E5DED0';x.lineWidth=2;x.setLineDash([5,5]);x.beginPath();x.moveTo(0,H/2);x.lineTo(W,H/2);x.stroke();return}
+  const mn=Math.min(...pts),mx=Math.max(...pts),sp=(mx-mn)||1,X=i=>5+i*(W-10)/(pts.length-1),Y=v=>H-8-(v-mn)/sp*(H-16);
+  const g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,'rgba(210,169,87,.32)');g.addColorStop(1,'rgba(210,169,87,0)');
+  x.beginPath();pts.forEach((v,i)=>i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v)));x.lineTo(X(pts.length-1),H);x.lineTo(X(0),H);x.closePath();x.fillStyle=g;x.fill();
+  x.beginPath();pts.forEach((v,i)=>i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v)));x.strokeStyle=brass;x.lineWidth=2.2;x.lineJoin='round';x.stroke();
+  const lx=X(pts.length-1),ly=Y(pts[pts.length-1]);x.beginPath();x.arc(lx,ly,3.5,0,7);x.fillStyle=brass;x.fill()}
+function renderTrend(id,code){const el=$(id);if(!el)return;code=code||'USD';const c=CURS.find(x=>x.code===code),d=mktDay(code);
+  if(!d){el.hidden=true;return}el.hidden=false;const ch=d.now-d.open;
+  el.innerHTML='<div class="t-h"><span class="t-l">'+c.flag+' '+shortNm(c)+' · بيع اليوم</span><b>'+fmt(d.now)+'</b><span class="t-c '+(ch>0?'up':ch<0?'down':'')+'">'+(ch?(ch>0?'▲ ':'▼ ')+fmt(Math.abs(ch)):'ثابت')+'</span></div>'+
+    '<canvas></canvas><div class="t-s"><div>الافتتاح<b>'+fmt(d.open)+'</b></div><div>أعلى اليوم<b class="up">'+fmt(d.hi)+'</b></div><div>أوطى اليوم<b class="down">'+fmt(d.lo)+'</b></div></div>'+
+    '<div class="small muted" style="margin-top:6px;text-align:center">'+(d.n?d.n+' تحديث اليوم · ':'')+(S.market.at?'آخر تحديث '+ago(S.market.at):'')+'</div>';
+  drawLine(el.querySelector('canvas'),d.pts.map(p=>p.s))}
+let mkCode='USD',alOp='up';tg('alOp',v=>alOp=v);
+function mktCurs(){const R=(S.market&&S.market.rates)||{};return CURS.filter(c=>R[c.code]&&R[c.code][1]!=null)}
+function openMkt(focus){const L=mktCurs();if(!L.find(c=>c.code===mkCode))mkCode=L[0]?L[0].code:'USD';openSheet('mktSheet');renderMkt();
+  if(focus==='alert')setTimeout(()=>{$('mkAlertSec').scrollIntoView({behavior:'smooth'});$('alV').focus()},350)}
+function renderMkt(){const L=mktCurs();$('mkSub').textContent=S.market&&S.market.at?'آخر تحديث '+ago(S.market.at):'سعر السوق بعده ما نزل';
+  $('mkCur').innerHTML=L.map(c=>'<button class="'+(c.code===mkCode?'on':'')+'" data-c="'+c.code+'">'+c.flag+' '+shortNm(c)+'</button>').join('');
+  $('mkCur').querySelectorAll('button').forEach(b=>b.onclick=()=>{mkCode=b.dataset.c;renderMkt()});
+  renderTrend('mkTrend',mkCode);if(!L.length)$('mkTrend').hidden=true;renderAlerts()}
+/* Price alerts live on this device. They fire once when the market sell rate crosses the number, and re-arm after it moves back. */
+function renderAlerts(){const A=S.alerts||[];$('alList').innerHTML=A.length?A.map((a,i)=>{const c=CURS.find(x=>x.code===a.code)||CURS[0],cur=mktR(a.code).sell;
+  return'<div class="al'+(a.arm?'':' off')+'"><span>'+c.flag+' '+shortNm(c)+' '+(a.op==='up'?'يصعد إلى':'ينزل إلى')+'</span><b>'+fmt(a.v)+'</b>'+(a.arm?'':'<span class="small muted">وصل ✓</span>')+'<button class="link x" style="color:var(--neg)" data-i="'+i+'">حذف</button></div>'}).join('')
+    :'<div class="small muted">ما عندك تنبيهات بعد.</div>';
+  $('alList').querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{S.alerts.splice(+b.dataset.i,1);save();renderAlerts()})}
+function addAlert(){const v=num($('alV').value);if(!v){toast('اكتب السعر');return}const cur=mktR(mkCode).sell;
+  if(cur!=null&&(alOp==='up'?cur>=v:cur<=v)){toast('السعر هسة '+(alOp==='up'?'فوق':'تحت')+' هذا الرقم، اختار رقم ثاني');return}
+  S.alerts=S.alerts||[];if(S.alerts.length>=10){toast('أكثر شي 10 تنبيهات');return}S.alerts.push({code:mkCode,op:alOp,v,arm:1});save();$('alV').value='';renderAlerts();toast('تمام، راح نبلغك ✓');
+  if(window.Native&&Native.askNotif){try{Native.askNotif()}catch(e){}}else if('Notification' in window&&Notification.permission==='default')Notification.requestPermission().catch(()=>{})}
+function checkAlerts(){const A=S.alerts||[];if(!A.length)return;let ch=0;
+  for(const a of A){const cur=mktR(a.code).sell;if(cur==null)continue;const hit=a.op==='up'?cur>=a.v:cur<=a.v;
+    if(hit&&a.arm){a.arm=0;ch=1;const c=CURS.find(x=>x.code===a.code)||CURS[0],body=c.flag+' '+shortNm(c)+' '+(a.op==='up'?'صعد':'نزل')+' إلى '+fmt(cur)+' بسعر السوق (تنبيهك: '+fmt(a.v)+')';
+      sysNotify({title:'🔔 وصل السعر اللي تريده',body,at:Date.now()});toast(body)}
+    else if(!hit&&!a.arm){a.arm=1;ch=1}}
+  if(ch){save();if($('mktSheet').classList.contains('on'))renderAlerts()}}
+function mktText(){const m=S.market,L=mktCurs();if(!L.length)return'';const lines=['💱 سعر الصرف بالسوق · '+new Date(m.at||Date.now()).toLocaleString('ar-IQ',{weekday:'long',hour:'numeric',minute:'2-digit'})];
+  for(const c of L){const r=m.rates[c.code],d=mktChg(c.code);lines.push(c.flag+' '+shortNm(c)+' ('+perShort(c)+')\nشراء: '+fmt(r[0])+' | بيع: '+fmt(r[1])+(d?(d>0?'  ▲ ':'  ▼ ')+fmt(Math.abs(d)):''))}
+  lines.push('حمّل تطبيق صرفلي وتابع السعر لحظة بلحظة:\nhttps://alialqaisi878-hash.github.io/sarrifli/');return lines.join('\n\n')}
+function copyMkt(){const t=mktText();if(!t){toast('سعر السوق بعده ما نزل');return}if(window.Native&&Native.copy){try{Native.copy(t);toast('تم النسخ ✓');return}catch(e){}}
+  (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('تم النسخ ✓'),()=>toast('ما كدرنا ننسخ'))}
+async function shareMkt(){const t=mktText();if(!t){toast('سعر السوق بعده ما نزل');return}
+  if(navigator.share&&!window.Native){try{await navigator.share({text:t});return}catch(e){if(e&&e.name==='AbortError')return}}
+  location.href='https://wa.me/?text='+encodeURIComponent(t)}
+async function loadMarket(){try{const m=await Cloud.market();if(m){S.market=m;save();checkAlerts()}}catch(e){}renderMarket();if($('admMarket'))admMarketTxt()}
 function renderMarket(){if($('v-cust').classList.contains('on'))renderCust();const el=$('mktRow');if(!el)return;const m=S.market,c=heroCode(),r=m&&m.rates&&m.rates[c];
-  if(!r){el.hidden=true;return}el.hidden=false;el.innerHTML='<span class="mk-l">سعر السوق</span><b class="num">'+fmt(r[0])+'</b><span class="mk-s">/</span><b class="num s">'+fmt(r[1])+'</b><span class="mk-t">'+ago(m.at)+'</span>'}
+  if(!r){el.hidden=true;return}el.hidden=false;const ch=mktChg(c);el.innerHTML='<span class="mk-l">سعر السوق</span><b class="num">'+fmt(r[0])+'</b><span class="mk-s">/</span><b class="num s">'+fmt(r[1])+'</b>'+(ch?'<span class="mk-c '+(ch>0?'up':'down')+'">'+(ch>0?'▲':'▼')+fmt(Math.abs(ch))+'</span>':'')+'<span class="mk-t">'+ago(m.at)+' ‹</span>'}
 async function admDelAll(){if(!guardAdmin()||!confirm('تحذف كل الإشعارات من عند الجميع؟ ما ترجع.'))return;try{const n=await Cloud.delAll();NOTIFS=[];admNotifs();renderNotifs();toast('انحذفت '+n+' إشعار ✓')}catch(e){toast('ما انحذفت: '+(e.code||e.message))}}
 function admNotifs(){$('admNotifs').innerHTML=NOTIFS.length?'<div class="row" style="margin-top:6px"><span class="small muted" style="flex:1">الإشعارات المرسلة</span><button class="link" style="color:var(--neg)" onclick="admDelAll()">حذف الكل</button></div>'+NOTIFS.slice(0,10).map(n=>'<div class="nt"><div class="row"><b style="flex:1">'+esc(n.title||'')+'</b><button class="link" data-id="'+n.id+'" style="color:var(--neg)">حذف</button></div><p>'+esc(n.body||'')+'</p><small>'+ago(n.at)+' · '+({all:'الكل',paid:'المشتركين',free:'غير المشتركين',cust:'الزبائن'}[n.target]||'الكل')+'</small></div>').join(''):'';
   $('admNotifs').querySelectorAll('[data-id]').forEach(b=>b.onclick=async()=>{try{await Cloud.del(b.dataset.id);NOTIFS=NOTIFS.filter(n=>n.id!==b.dataset.id);admNotifs();renderNotifs()}catch(e){toast('ما انحذف')}})}
@@ -1363,14 +1440,14 @@ function renderCust(){if(!$('cMkt'))return;const m=S.market,R=(m&&m.rates)||{},L
   const h=new Date().getHours();$('cGreet').textContent=h>=4&&h<12?'صباح الخير ☀️':h<17?'نهارك سعيد':'مساء الخير 🌙';
   $('cMktT').textContent=m&&m.at?'آخر تحديث '+ago(m.at):'';
   $('cMkt').innerHTML=L.length?'<div class="hd"><span style="text-align:right">العملة</span><span>شراء</span><span>بيع</span><span></span></div>'+L.map((c,i)=>{const r=R[c.code];
-    return'<div class="rr rise" style="--i:'+i+'"><div class="nm"><span class="fl">'+c.flag+'</span><div style="min-width:0"><b>'+shortNm(c)+'</b><small>'+perShort(c)+'</small></div></div><div class="v">'+fmt(r[0])+'</div><div class="v s">'+fmt(r[1])+'</div><span></span></div>'}).join('')
+    return'<div class="rr rise" style="--i:'+i+'"><div class="nm"><span class="fl">'+c.flag+'</span><div style="min-width:0"><b>'+shortNm(c)+'</b><small>'+perShort(c)+'</small></div></div><div class="v">'+fmt(r[0])+'</div><div class="v s">'+fmt(r[1])+chgSmall(mktChg(c.code))+'</div><span></span></div>'}).join('')
     :'<div class="empty-st"><span style="font-size:30px">⏳</span><b>سعر السوق بعده ما نزل</b><p>شوف أسعار الصيرفات القريبة جوّه، أو ارجع بعد شوية</p></div>';
   const of=nearData().filter(o=>!o.me).sort((a,b)=>a.s-b.s||a.d-b.d).slice(0,3);
   $('cOffices').innerHTML=of.map(o=>'<div class="card cof"><div style="flex:1;min-width:0"><div class="nm">'+esc(o.n)+(o.v?' <span class="badge v">✓</span>':'')+'</div><div class="small muted">'+esc(o.a||'')+' · '+dist(o.d)+(o.t?' · '+ago(o.t):'')+'</div></div><div class="p"><div><span>بيع</span><b>'+fmt(o.s)+'</b></div><div><span>شراء</span><b>'+fmt(o.b)+'</b></div></div></div>').join('')||'<div class="small muted">ماكو صيرفات قريبة بعد.</div>';
-  $('cGlobal').innerHTML=$('gList').innerHTML}
+  renderTrend('cTrend');$('cGlobal').innerHTML=$('gList').innerHTML}
 function renderAll(){applyRole();applyTheme();renderHeader();renderAcct();renderHome();renderSet();renderConv();renderGlobal();
   if($('v-share').classList.contains('on'))drawShot();if($('v-near').classList.contains('on'))renderNear()}
-try{renderAll()}catch(e){console.error(e);showErr(e&&e.message)}Cloud.init().then(()=>{keepNative();setTimeout(()=>pushSetup(false).then(pushBox),2500);devPing();startNotifs();nativeSync();loadMarket();setInterval(loadMarket,6e5);liveOffices();Cloud.onMarket(m=>{if(!m)return;S.market=m;save();renderMarket();if($('admMarket'))admMarketTxt()});renderSetup();if(location.hash==='#admin')go('admin')});loadGlobal();setInterval(()=>loadGlobal(),36e5);
+try{renderAll()}catch(e){console.error(e);showErr(e&&e.message)}Cloud.init().then(()=>{keepNative();setTimeout(()=>pushSetup(false).then(pushBox),2500);devPing();startNotifs();nativeSync();loadMarket();setInterval(loadMarket,6e5);liveOffices();Cloud.onMarket(m=>{if(!m)return;S.market=m;save();checkAlerts();renderMarket();if($('admMarket'))admMarketTxt()});renderSetup();if(location.hash==='#admin')go('admin')});loadGlobal();setInterval(()=>loadGlobal(),36e5);
 setInterval(()=>{tickClock();const [cls,txt]=pubState(),ps=$('pubStatus');ps.className='status '+cls;ps.textContent=txt},30000);
 let rsT;addEventListener('resize',()=>{clearTimeout(rsT);rsT=setTimeout(()=>{drawSpark();if($('v-near').classList.contains('on'))renderNear()},150)});
 if(S.ob==null)S.ob=1;
